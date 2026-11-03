@@ -1,0 +1,2 @@
+ALTER TABLE settings 
+ADD COLUMN is_rating_enabled BOOLEAN DEFAULT TRUE;

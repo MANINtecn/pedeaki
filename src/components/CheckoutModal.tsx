@@ -1,0 +1,449 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Order, PaymentMethod } from '../types';
+import { X, DollarSign, CreditCard, Banknote, Calculator, Printer } from 'lucide-react';
+import { checkoutRapidoAtivo } from '../utils/checkoutPrefs';
+
+interface CheckoutModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: (paymentDetails: PaymentDetails) => Promise<void>;
+    order: Order;
+    /**
+     * F8 dentro do checkout -- pedido do Ikarus 02/10/2026: "você vai pôr ali
+     * na frente F8 pagamento fracionado". Fecha ESTE checkout e abre o
+     * SplitBillModal (que vive no AdminPage, fora desta árvore) pra mesa do
+     * pedido atual. Só aparece/funciona quando o pedido tem mesa (table_number)
+     * -- pedido avulso/balcão sem mesa não tem conta pra dividir.
+     */
+    onOpenSplitBill?: () => void;
+}
+
+export interface PaymentDetails {
+    method: PaymentMethod;
+    amountTendered: number;
+    change: number;
+    discount: number;
+    tax: number;
+    finalTotal: number;
+}
+
+export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, onConfirm, order, onOpenSplitBill }) => {
+    const [method, setMethod] = useState<PaymentMethod>('Dinheiro');
+    const [amountTendered, setAmountTendered] = useState<string>('');
+    const [discount, setDiscount] = useState<string>('');
+    const [tax, setTax] = useState<string>('');
+    const [isProcessing, setIsProcessing] = useState(false);
+    // CHECKOUT V2 (rápido): sem "Valor Recebido"/troco. Escolha por máquina em Configurações.
+    // Lido a cada render com o modal aberto, então a troca vale na hora.
+    const modoRapido = isOpen && checkoutRapidoAtivo();
+    /** Garante que o foco inicial aconteca UMA vez por abertura do modal. */
+    const jaFocou = useRef(false);
+    /** Container do modal. Ref ESTAVEL — ver o comentario do useEffect abaixo. */
+    const containerRef = useRef<HTMLDivElement>(null);
+    /** Campo "Valor Recebido": e ele que recebe o foco, nao o container. */
+    const campoValorRef = useRef<HTMLInputElement>(null);
+
+    // DEPENDER DE order.id (string), NUNCA de `order` (objeto).
+    //
+    // O React compara dependencia por identidade de referencia. O AdminPage
+    // recria o objeto do pedido a cada render — e ele re-renderiza sozinho: o
+    // polling roda a cada 30s e o realtime dispara a cada pedido que entra.
+    // Com `order` na lista, este efeito rodava de novo no meio da digitacao e
+    // o setAmountTendered('') apagava o valor que o operador estava digitando.
+    //
+    // O sintoma era "o campo nao funciona": o clique entrava e o foco tambem,
+    // mas nenhum caractere ficava na tela. Ver claude-acai.md, 1.0.52.
+    useEffect(() => {
+        if (!isOpen) {
+            jaFocou.current = false;   // proxima abertura foca de novo
+            return;
+        }
+        setMethod(order.paymentMethod || 'Dinheiro');
+        setAmountTendered('');
+        setDiscount('');
+        setTax('');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, order?.id]);
+
+    // FOCO INICIAL — aqui, nunca num callback ref.
+    //
+    // Um callback ref (`ref={(el) => ...}`) sem useCallback e recriado a cada
+    // render. O React entao chama o ref ANTIGO com `null` e o novo com o
+    // elemento — e nesse instante o foco do documento se perde. O campo estava
+    // focado, o elemento e "re-apresentado", o foco cai no body.
+    //
+    // Como este modal nao e memo e recebe `onClose` como arrow inline, ele
+    // re-renderiza junto com o AdminPage — que re-renderiza sozinho pelo
+    // polling de 30s e pelo realtime. Dai o relato: "passa uns segundos e o
+    // campo para". Minimizar "resolvia" porque o remount refazia tudo.
+    useEffect(() => {
+        if (!isOpen || jaFocou.current) return;
+        jaFocou.current = true;
+        // Proximo quadro: o React ja pintou os campos.
+        requestAnimationFrame(() => {
+            // Dinheiro ja chega com o cursor no valor recebido; nas outras
+            // formas basta o container, para D/C/P e ENTER funcionarem.
+            (campoValorRef.current ?? containerRef.current)?.focus();
+        });
+    }, [isOpen]);
+
+    // CRÍTICO (achado em 02/10/2026, véspera da demo: "selecionei Cartão com
+    // a tecla C, mas o Enter não fecha mais"): o foco inicial ia pro campo
+    // "Valor Recebido" (só existe com method === 'Dinheiro'). Ao trocar pra
+    // Cartão/PIX via tecla, esse campo é DESMONTADO -- e o navegador joga o
+    // foco pro <body>, fora do container do modal inteiro. onKeyDown só
+    // dispara com o foco dentro da árvore do container, então D/C/P/Enter
+    // paravam de funcionar silenciosamente depois da primeira troca de
+    // método. Corrigido: sempre que o método for algo SEM campo de valor
+    // (Cartão/PIX), devolve o foco pro container.
+    useEffect(() => {
+        // V2 nao tem campo de valor: o foco fica SEMPRE no container (D/C/P/Enter).
+        if (!isOpen || (method === 'Dinheiro' && !modoRapido)) return;
+        requestAnimationFrame(() => containerRef.current?.focus());
+    }, [isOpen, method, modoRapido]);
+
+    if (!isOpen) return null;
+
+    const orderTotal = order.total;
+    const discountValue = parseFloat(discount) || 0;
+    const taxValue = parseFloat(tax) || 0;
+    const finalTotal = Math.max(0, orderTotal - discountValue + taxValue);
+    const tendered = parseFloat(amountTendered) || 0;
+    const change = method === 'Dinheiro' && !modoRapido ? Math.max(0, tendered - finalTotal) : 0;
+    const remaining = Math.max(0, finalTotal - tendered);
+
+    const handleConfirm = async () => {
+        if (!modoRapido && method === 'Dinheiro' && tendered < finalTotal) {
+            alert('Valor recebido é menor que o total!');
+            return;
+        }
+
+        setIsProcessing(true);
+        try {
+            await onConfirm({
+                method,
+                amountTendered: method === 'Dinheiro' && !modoRapido ? tendered : finalTotal,
+                change,
+                discount: discountValue,
+                tax: taxValue,
+                finalTotal
+            });
+            onClose();
+        } catch (error) {
+            console.error("Checkout error:", error);
+            alert("Erro ao finalizar pagamento.");
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    // ── ATALHOS DE TECLADO ────────────────────────────────────────
+    // Eles vêm de PDV com atalho por letra (D/C/P). Como este checkout é
+    // MODAL, as letras só valem enquanto ele está aberto — não conflitam com
+    // o atalho numérico de mesa da tela do balcão.
+    // Ligado ao container via onKeyDown (nao useEffect): este componente tem
+    // um early-return acima, e hook depois de return quebra as regras do React.
+    const aoTeclar = (e: React.KeyboardEvent<HTMLDivElement>) => {
+        const alvo = e.target as HTMLElement | null;
+        const digitando = !!alvo && (
+            alvo.tagName === 'INPUT' ||
+            alvo.tagName === 'TEXTAREA' ||
+            alvo.isContentEditable
+        );
+
+        if (e.key === 'Escape') { onClose(); return; }
+
+        // F2 finaliza mesmo com o cursor num campo: e a tecla de confirmar.
+        if (e.key === 'F2') {
+            e.preventDefault();
+            if (!isProcessing) handleConfirm();
+            return;
+        }
+
+        // F8: pagamento fracionado -- pedido do Ikarus 02/10/2026: "você vai
+        // pôr ali na frente F8 pagamento fracionado". Fecha este checkout e
+        // abre a tela de dividir conta pra mesma mesa/comanda. Só funciona
+        // com pedido de mesa (table_number) -- avulso/balcão sem mesa não tem
+        // conta pra dividir entre pessoas.
+        if (e.key === 'F8' && onOpenSplitBill && order.table_number) {
+            e.preventDefault();
+            onOpenSplitBill();
+            return;
+        }
+
+        // CRÍTICO (achado em 01/10/2026, véspera da demo: "apertei C de
+        // cartão e não foi, tive que clicar manual"): o foco inicial cai no
+        // campo "Valor Recebido" (campoValorRef) quando o método é Dinheiro
+        // -- e esse campo é um <input>, então `digitando` ficava true e o
+        // `return` abaixo engolia D/C/P antes de trocarem o método. Como o
+        // campo é numérico (type="number"), letras nunca são dígito de
+        // verdade nele -- então D/C/P têm que valer mesmo com o campo
+        // focado. Só dígitos/Backspace/etc continuam indo pro campo.
+        // SETAS (06/10/2026, pedido do Ikarus: "as letras podem nao funcionar no teclado deles"):
+        // <- -> trocam a forma de pagamento na ordem da tela (Dinheiro, Pix, Cartao) e ENTER finaliza.
+        // Trava nas pontas. Com o cursor num campo (V1: Valor Recebido) as setas continuam sendo do campo.
+        if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && (!digitando || modoRapido) && !isProcessing) {
+            e.preventDefault();
+            const ordem = ['Dinheiro', 'PIX', 'Cartão'];
+            const atual = ordem.indexOf(method);
+            const proximo = Math.min(ordem.length - 1, Math.max(0, (atual < 0 ? 0 : atual) + (e.key === 'ArrowRight' ? 1 : -1)));
+            setMethod(ordem[proximo] as typeof method);
+            return;
+        }
+
+        const tecla = e.key.toUpperCase();
+        if (tecla === 'D') { e.preventDefault(); setMethod('Dinheiro'); return; }
+        if (tecla === 'C') { e.preventDefault(); setMethod('Cartão'); return; }
+        if (tecla === 'P') { e.preventDefault(); setMethod('PIX'); return; }
+
+        // '=': preenche "Valor Recebido" com o valor exato (pagamento sem
+        // troco) -- achado pela auditoria de 01/10/2026: pagar "no dinheiro
+        // certo" é o caso mais comum, e hoje exige redigitar manualmente o
+        // mesmo total que já está exibido na tela. Mesmo critério de D/C/P:
+        // '=' nunca é dígito de verdade no campo numérico, então vale mesmo
+        // com ele focado.
+        if (e.key === '=') { e.preventDefault(); if (!modoRapido) setAmountTendered(finalTotal.toFixed(2)); return; }
+
+        if (digitando) return;
+
+        if (e.key === 'Enter') { e.preventDefault(); if (!isProcessing) handleConfirm(); }
+    };
+
+    return (
+        <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+            onKeyDown={aoTeclar}
+            tabIndex={-1}
+            ref={containerRef}
+        >
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+                {/* Header */}
+                <div className="bg-gray-50 dark:bg-gray-700/50 p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                            <DollarSign className="text-green-600" />
+                            Checkout
+                        </h2>
+                        {/* Legenda de atalhos -- pedido do Ikarus 01/10/2026:
+                            "povo enjoado", tecla+ação tem que morar na MESMA
+                            pílula/borda, mesmo padrão já usado no Balcão. */}
+                        <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                            {[
+                                { tecla: 'ESC', acao: 'CANCELA' },
+                                { tecla: 'D', acao: 'DINHEIRO' },
+                                { tecla: 'C', acao: 'CARTÃO' },
+                                { tecla: 'P', acao: 'PIX' },
+                                { tecla: '← →', acao: 'TROCAR' },
+                                ...(modoRapido ? [] : [{ tecla: '=', acao: 'VALOR EXATO' }]),
+                                { tecla: 'ENTER', acao: 'FINALIZA' },
+                                // F8 pagamento fracionado -- pedido do Ikarus
+                                // 02/10/2026. Só aparece quando o pedido tem
+                                // mesa (table_number): avulso/balcão sem mesa
+                                // não tem conta pra dividir entre pessoas.
+                                ...(onOpenSplitBill && order.table_number ? [{ tecla: 'F8', acao: 'PAGAMENTO FRACIONADO' }] : []),
+                            ].map(({ tecla, acao }) => (
+                                <span key={tecla} className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded-full">
+                                    <kbd className="px-1.5 py-0.5 bg-amber-500/25 rounded text-[10px] font-black uppercase text-gray-900 dark:text-white">{tecla}</kbd>
+                                    <span className="text-[10px] font-black uppercase text-gray-900 dark:text-white">{acao}</span>
+                                </span>
+                            ))}
+                        </div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                            Pedido #{order.dailyOrderNumber} • {order.customerName}
+                        </p>
+                    </div>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                        <X size={24} />
+                    </button>
+                </div>
+
+                {/* Body */}
+                <div className="p-6 space-y-6 overflow-y-auto">
+                    {/* Total Display */}
+                    <div className="text-center">
+                        <p className="text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total a Pagar</p>
+                        <div className="text-4xl font-extrabold text-gray-900 dark:text-white my-2">
+                            R$ {Number(finalTotal).toFixed(2)}
+                        </div>
+                        {discountValue > 0 && (
+                            <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                                Desconto aplicado: -R$ {Number(discountValue).toFixed(2)}
+                            </p>
+                        )}
+                        {taxValue > 0 && (
+                            <p className="text-sm text-red-600 dark:text-red-400 font-medium">
+                                Taxa aplicada: +R$ {Number(taxValue).toFixed(2)}
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Payment Method Selection */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Forma de Pagamento</label>
+                        <div className="grid grid-cols-3 gap-3">
+                            <button
+                                onClick={() => setMethod('Dinheiro')}
+                                className={`relative p-3 rounded-lg border flex flex-col items-center gap-2 transition-all ${method === 'Dinheiro' ? 'bg-green-50 border-green-500 text-green-700 dark:bg-green-900/20 dark:border-green-500 dark:text-green-400 ring-1 ring-green-500' : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                            >
+                                <Banknote size={24} />
+                                <span className="text-xs font-bold">Dinheiro</span>
+                                <span className="absolute top-1 left-1.5 text-[10px] font-black opacity-60 leading-none">D</span>
+                            </button>
+                            <button
+                                onClick={() => setMethod('PIX')}
+                                className={`relative p-3 rounded-lg border flex flex-col items-center gap-2 transition-all ${method === 'PIX' ? 'bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-900/20 dark:border-blue-500 dark:text-blue-400 ring-1 ring-blue-500' : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                            >
+                                <div className="w-6 h-6 font-bold flex items-center justify-center border-2 border-current rounded text-[10px]">PIX</div>
+                                <span className="text-xs font-bold">Pix</span>
+                                <span className="absolute top-1 left-1.5 text-[10px] font-black opacity-60 leading-none">P</span>
+                            </button>
+                            <button
+                                onClick={() => setMethod('Cartão')}
+                                className={`relative p-3 rounded-lg border flex flex-col items-center gap-2 transition-all ${method === 'Cartão' ? 'bg-purple-50 border-purple-500 text-purple-700 dark:bg-purple-900/20 dark:border-purple-500 dark:text-purple-400 ring-1 ring-purple-500' : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                            >
+                                <CreditCard size={24} />
+                                <span className="text-xs font-bold">Cartão</span>
+                                <span className="absolute top-1 left-1.5 text-[10px] font-black opacity-60 leading-none">C</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Checkout V2 (rápido): sem valor recebido/troco -- só confirma. */}
+                    {modoRapido && (
+                        <p className="text-center text-sm font-bold text-gray-700 dark:text-gray-200">
+                            Aperte <kbd className="px-1.5 py-0.5 bg-orange-500/50 rounded text-[11px] font-black text-gray-900 dark:text-white">ENTER</kbd> para finalizar em <span className="uppercase">{method === 'Cartão' ? 'cartão' : method}</span>
+                        </p>
+                    )}
+
+                    {/* Money Inputs */}
+                    {method === 'Dinheiro' && !modoRapido && (
+                        <div className="space-y-4 bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Valor Recebido</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                                    <input
+                                        ref={campoValorRef}
+                                        type="number"
+                                        value={amountTendered}
+                                        onChange={e => setAmountTendered(e.target.value)}
+                                        onFocus={e => e.target.select()}
+                                        onKeyDown={e => {
+                                            // ENTER dentro do campo tambem finaliza. Sem isto
+                                            // so funcionava ENTER fora do campo (o aoTeclar do
+                                            // container ignora dígitos/ENTER quando o alvo e
+                                            // um INPUT — guarda `digitando`), entao o operador
+                                            // digitava o valor e precisava clicar fora antes
+                                            // de apertar ENTER.
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                if (!isProcessing) handleConfirm();
+                                            }
+                                        }}
+                                        className="w-full pl-10 pr-4 py-3 text-lg font-bold border rounded-lg focus:ring-2 focus:ring-green-500 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                                        placeholder="0.00"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-600">
+                                <span className="text-gray-600 dark:text-gray-400 font-medium">Troco</span>
+                                <span className={`text-xl font-bold ${change > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
+                                    R$ {Number(change).toFixed(2)}
+                                </span>
+                            </div>
+                            {remaining > 0 && (
+                                <div className="flex justify-between items-center">
+                                    <span className="text-red-500 text-sm">Faltam</span>
+                                    <span className="text-red-500 font-bold">R$ {Number(remaining).toFixed(2)}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Discount and Tax Inputs */}
+                    <div className="grid grid-cols-2 gap-4">
+                        {/* Discount Input */}
+                        <div>
+                            <button
+                                onClick={() => setDiscount(discount ? '' : '0')}
+                                className="text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 mb-2"
+                            >
+                                <Calculator size={14} />
+                                {discount !== '' ? 'Remover Desconto' : 'Adicionar Desconto'}
+                            </button>
+
+                            {discount !== '' && (
+                                <div className="animate-in fade-in slide-in-from-top-2">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Desconto (R$)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                                        <input
+                                            type="number"
+                                            value={discount}
+                                            onChange={e => setDiscount(e.target.value)}
+                                            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Tax Input */}
+                        <div>
+                            <button
+                                onClick={() => setTax(tax ? '' : '0')}
+                                className="text-sm text-red-600 dark:text-red-400 hover:underline flex items-center gap-1 mb-2"
+                            >
+                                <Calculator size={14} />
+                                {tax !== '' ? 'Remover Taxa' : 'Adicionar Taxa'}
+                            </button>
+
+                            {tax !== '' && (
+                                <div className="animate-in fade-in slide-in-from-top-2">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Taxa (R$)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                                        <input
+                                            type="number"
+                                            value={tax}
+                                            onChange={e => setTax(e.target.value)}
+                                            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 bg-gray-50 dark:bg-gray-700/50 border-t border-gray-200 dark:border-gray-700 flex gap-3">
+                    <button
+                        onClick={onClose}
+                        className="flex-1 py-3 px-4 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-bold hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                        disabled={isProcessing}
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        onClick={handleConfirm}
+                        disabled={isProcessing || (!modoRapido && method === 'Dinheiro' && tendered < finalTotal)}
+                        className="flex-2 w-full py-3 px-4 bg-green-600 dark:bg-green-700 text-white rounded-lg font-bold hover:bg-green-700 dark:hover:bg-green-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-600/20"
+                    >
+                        {isProcessing ? (
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                            <>
+                                <Printer size={20} />
+                                Finalizar e Imprimir
+                            </>
+                        )}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};

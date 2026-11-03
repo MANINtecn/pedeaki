@@ -1,0 +1,17 @@
+import { JSDOM } from "jsdom";
+const dom = new JSDOM("<!doctype html><html><body><div id=root></div></body></html>", { url: "http://localhost/", pretendToBeVisual: true });
+const w: any = dom.window;
+const g: any = globalThis;
+g.window = w; g.document = w.document; g.localStorage = w.localStorage; g.sessionStorage = w.sessionStorage;
+for (const k of ["HTMLElement", "HTMLInputElement", "Node", "KeyboardEvent", "Event", "MouseEvent", "getComputedStyle", "MutationObserver", "CustomEvent", "Element", "HTMLButtonElement"]) g[k] = w[k];
+Object.defineProperty(g, "navigator", { value: w.navigator, configurable: true });
+g.requestAnimationFrame = (f: any) => setTimeout(() => f(Date.now()), 0);
+g.cancelAnimationFrame = (id: any) => clearTimeout(id);
+w.requestAnimationFrame = g.requestAnimationFrame; w.cancelAnimationFrame = g.cancelAnimationFrame;
+g.IS_REACT_ACT_ENVIRONMENT = true;
+w.alert = (m: any) => { (g.__alertas ||= []).push(String(m)); };
+w.confirm = () => true;
+w.scrollTo = () => {};
+w.matchMedia = w.matchMedia || (() => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }));
+g.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+w.HTMLElement.prototype.scrollIntoView = function () {};

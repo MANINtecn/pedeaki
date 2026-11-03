@@ -1,0 +1,580 @@
+export interface Store {
+  id: string;
+  name: string;
+  slug: string;
+  owner_id?: string;
+  created_at?: string;
+  logo_url?: string;
+  theme_colors?: {
+    primary: string;
+    secondary: string;
+    background: string;
+    surface: string;
+  };
+  // SaaS Fields
+  subscription_end_date?: string;
+  /** Modelo de venda: 'comissao' (Pede Aqui, sem mensalidade) ou 'pdv' (mensalidade, Básico ou Avançado). Loja antiga sem o campo = PDV completo. */
+  modelo?: 'comissao' | 'pdv';
+  /** Só no modelo PDV. Loja de comissão não tem plano. */
+  plan?: 'basico' | 'avancado' | null;
+  /** Falso quando o débito do dinheiro passou do limite: o checkout esconde a opção Dinheiro. */
+  aceita_dinheiro?: boolean;
+  categoria?: string;
+  cidade?: string;
+  aparecer_no_shopping?: boolean;
+  plan_value?: number;
+  is_active?: boolean;
+  owner_email?: string;
+}
+
+export interface Category {
+  id: number;
+  name: string;
+  store_id: string;
+}
+
+export interface Customer {
+  id: string;
+  store_id: string;
+  phone: string;
+  name: string;
+  address?: string;
+  reference_point?: string;
+  preferred_payment_method?: string;
+  last_change_for?: number;
+  total_orders: number;
+  last_order_at?: string;
+}
+
+export interface Addon {
+  id: string;
+  name: string;
+  price: number;
+  isAvailable: boolean;
+  categoryId?: number;
+  store_id: string;
+  daysOfWeek?: string[];
+  /**
+   * Grupo do complemento, usado para separar sabor de calda no fluxo do
+   * Milkshake -- pedido do Ikarus, 21/09/2026: "cliente escolhe o sabor
+   * primeiro... e depois perguntamos qual calda, 1 calda apenas
+   * selecionada". undefined = generico (comportamento historico: aparece
+   * numa lista so, sem separacao, escolha livre). So produtos com addons
+   * marcados como 'sabor' E 'calda' ganham o fluxo em 2 passos no
+   * ItemDetailModal -- outros produtos continuam como sempre foram.
+   */
+  addonGroup?: 'sabor' | 'calda';
+  /**
+   * TIPO NO CARDÁPIO (21/10/2026). Item com tipo faz o produto abrir o passo a passo no site:
+   *   sabor     -> passo 1, obrigatório, escolhe 1 (preço único: outro sabor = outra unidade)
+   *   opcional  -> passo 2, grátis, pode pular
+   *   adicional -> passo 3, pago, pode pular
+   * Sem tipo = lista antiga de sempre. Não confundir com addonGroup (passos do Milkshake).
+   */
+  tipoComplemento?: TipoComplemento;
+}
+
+export type TipoComplemento = 'sabor' | 'opcional' | 'adicional';
+
+export interface MenuItem {
+  id: number;
+  name: string;
+  /**
+   * Código para lançamento rápido por teclado no balcão. SEMPRE >= 100:
+   * 1..30 são números de MESA no atalho, então produtos começam em 100
+   * para nunca haver ambiguidade. Único por loja.
+   */
+  codigo?: number;
+  description: string;
+  price: number;
+  image?: string;
+  categoryId: number;
+  eligibleForCombo: boolean;
+  isCombo: boolean;
+  selectedAddons: Addon[];
+  store_id: string;
+  isAvailable: boolean;
+  /**
+   * Produto de uso exclusivo do salão/balcão (ex.: ADD3, ADD5 -- adicional
+   * genérico de preço fixo, lançado por código sem escolher sabor). NÃO aparece
+   * no cardápio do site; balcão, garçom e admin continuam vendo.
+   */
+  somenteBalcao?: boolean;
+  /**
+   * Picolés: os sabores ganham contador por sabor (3 de nata, 2 de coco...) no
+   * site, e cada sabor com quantidade vira uma linha do carrinho.
+   */
+  saboresComQuantidade?: boolean;
+  allowedAddons?: string[];
+  addons?: Addon[];
+  printed?: boolean;
+  isWeightBased?: boolean;
+  pricePerKg?: number;
+  /**
+   * Campos fiscais (NFC-e). `ncm` e OBRIGATORIO para emitir — sem ele a
+   * nota nao sai. Levantamento de 21/09/2026, cruzando com os XMLs reais
+   * do Multipedidos: NENHUM dos 73 produtos tinha NCM preenchido (pior do
+   * que o "33 sem NCM" de 09/09). Preenchido em lote nesta data para os
+   * produtos com correspondencia confirmada nos XMLs reais -- ver
+   * claude-acai.md, "Preenchimento fiscal em lote a partir dos XMLs reais".
+   */
+  ncm?: string;
+  cest?: string;
+  /** 'UN' padrao; acai vendido por peso usa 'KG' (3 casas na nota). */
+  unidadeFiscal?: string;
+  /** 0 = nacional — padrao para produto de sorveteria/alimenticio. */
+  origemFiscal?: number;
+  /**
+   * CFOP e CSOSN mudam POR PRODUTO, nao sao um padrao unico da loja --
+   * achado dos XMLs reais (21/09/2026): açai e bebidas industrializadas
+   * usam CSOSN 500 (Substituicao Tributaria, ICMS ja retido na industria),
+   * mas sorvete/churros/canjica usam CSOSN 102 (normal). Confirmado com o
+   * contador (CS Contabilidade, 21/09/2026: "sim, correto"). Quando vazio,
+   * o gerador de XML (Fase 2) cai no cfop_padrao/csosn_padrao de
+   * fiscal_config -- mas isso so serve para os itens fora do regime de ST.
+   */
+  cfopFiscal?: string;
+  csosnFiscal?: string;
+}
+
+export interface CartItem extends MenuItem {
+  cartId: string;
+  quantity: number;
+  notes: string;
+  printed?: boolean;
+  weightKg?: number;
+  /**
+   * Marca que este item foi RESGATADO com pontos de fidelidade -- entra no
+   * pedido com price=0 (definido no momento do resgate) mas o sistema
+   * precisa saber que foi resgate para nao contar como venda normal em
+   * relatorios, e para o ledger de pontos bater com o pedido certo.
+   */
+  isLoyaltyRedemption?: boolean;
+  /** Quantos pontos este resgate custou (para o ledger, ao criar o pedido). */
+  loyaltyPointsCost?: number;
+}
+
+export type OrderType = 'Entrega' | 'Balcão' | 'Retirada';
+
+/** Um dos ate 4 produtos resgataveis no modelo de fidelidade por pontos. */
+export interface LoyaltyRewardItem {
+  id: string;
+  store_id: string;
+  menu_item_id: number;
+  /** Custo em pontos para resgatar este produto. */
+  points_cost: number;
+  /** Copia do nome/preco do MenuItem no momento da config, para exibir sem join. */
+  menu_item_name: string;
+  menu_item_price: number;
+  is_active: boolean;
+}
+
+/** Saldo de pontos de UM cliente, numa loja. */
+export interface CustomerLoyaltyPoints {
+  id: string;
+  store_id: string;
+  phone: string;
+  points_balance: number;
+  updated_at: string;
+}
+
+/**
+ * Configuracao fiscal da loja (NFC-e) — 1 linha por loja. Ver
+ * claude-acai.md, "ARQUITETURA TECNICA DA NFC-e". `provedor_api` e' so o
+ * NOME do provedor escolhido (Focus NFe/TecnoSpeed/Webmania) — o TOKEN em
+ * si nunca trafega para o front, so a Edge Function o le.
+ */
+export interface FiscalConfig {
+  id: string;
+  store_id: string;
+  cnpj?: string;
+  inscricao_estadual?: string;
+  razao_social?: string;
+  nome_fantasia?: string;
+  logradouro?: string;
+  numero?: string;
+  bairro?: string;
+  municipio?: string;
+  cod_ibge_municipio?: string;
+  uf?: string;
+  cep?: string;
+  regime_tributario?: number;
+  cfop_padrao?: string;
+  csosn_padrao?: string;
+  pis_cst?: string;
+  cofins_cst?: string;
+  carga_tributaria_aprox?: number;
+  ambiente: 'homologacao' | 'producao';
+  provedor_api?: string;
+  csc_id?: string;
+  /** LEGADO: o CSC nao e mais guardado no banco (vai direto ao Brasil NFe). */
+  csc_token?: string;
+  /** ID do CSC de homologacao (nao e' segredo; o token do CSC nunca fica no banco). */
+  csc_id_homologacao?: string;
+  /** Campos do cadastro da empresa no Brasil NFe. */
+  inscricao_municipal?: string;
+  cnae?: string;
+  telefone?: string;
+  email?: string;
+  complemento?: string;
+  /** Preenchido pela Edge Function quando a empresa foi enviada ao Brasil NFe. */
+  brasilnfe_cadastrada_em?: string;
+  /**
+   * Serie e numero inicial da NFC-e — Fase 2, 28/09/2026. `numero_inicial`
+   * so deve ser configurado depois de confirmar com o Multipedidos se
+   * houve emissao em setembro/2026 (ver claude-acai.md); usar o numero
+   * ERRADO aqui faz o sistema novo colidir com uma nota ja emitida e a
+   * SEFAZ rejeita por duplicidade.
+   */
+  serie_padrao?: number;
+  numero_inicial?: number;
+  /**
+   * Metadados do certificado A1 -- NUNCA o arquivo nem a senha aqui (ficam
+   * no Supabase Storage privado + secret da Edge Function). So o que a
+   * tela precisa para mostrar "certificado enviado, valido ate X".
+   */
+  certificado_nome_arquivo?: string;
+  certificado_validade?: string;
+  certificado_enviado_em?: string;
+  certificado_storage_path?: string;
+}
+
+export type NotaFiscalStatus = 'pendente' | 'autorizada' | 'rejeitada' | 'cancelada' | 'contingencia';
+
+/** Uma NFC-e emitida (ou tentada) para um pedido. */
+export interface NotaFiscal {
+  id: string;
+  store_id: string;
+  order_id?: string;
+  serie: number;
+  numero: number;
+  chave_acesso?: string;
+  protocolo_autorizacao?: string;
+  status: NotaFiscalStatus;
+  motivo_rejeicao?: string;
+  valor_total: number;
+  data_emissao: string;
+  xml?: string;
+  danfe_url?: string;
+  emitida_por_estacao?: string;
+  /** Quantas vezes o reprocessamento (contingencia) ja tentou reenviar. */
+  tentativas_reprocessamento?: number;
+  ultima_tentativa_em?: string;
+}
+
+export type PaymentMethod = 'Dinheiro' | 'Cartão' | 'PIX';
+export type OrderStatus = 'Novo' | 'Em Produção' | 'A Caminho' | 'No Portão' | 'Entregue' | 'Cancelado' | 'Conta Solicitada';
+
+export interface Order {
+  id?: string;
+  timestamp?: string;
+  dailyOrderNumber: number;
+  customerName: string;
+  phone?: string;
+  address?: string;
+  referencePoint?: string;
+  orderType: OrderType;
+  paymentMethod: PaymentMethod;
+  status: OrderStatus;
+  changeFor?: string;
+  items: CartItem[];
+  total: number;
+  store_id: string;
+  printed?: boolean;
+  observation?: string;
+  /**
+   * ATENCAO: chega do banco como STRING ("1"), nao number. Comparar sempre
+   * com mesmaMesa()/Number(), nunca com === direto contra number.
+   */
+  table_number?: number | string;
+  comandaNumber?: number;
+  discount?: number;
+  tax?: number;
+  rating?: number;
+  feedback?: string;
+  deliveryFee?: number;
+  comboPrice?: number;
+  origin?: string;
+  statusHistory?: OrderStatusHistoryItem[];
+  courier_id?: string;
+  courier_name?: string;
+  subOrderIndex?: number;
+  /** Balcão V2 offline (15/10/2026): detalhe por forma (venda paga em partes). */
+  pagamentos?: { forma: string; valor: number }[];
+  /** Venda fechada neste PC que ainda não subiu para o banco (só no Histórico). */
+  pendenteEnvio?: boolean;
+  /** Veio do livro do PC porque a nuvem não respondeu (já tinha sido enviada antes). Só no Histórico. */
+  viaLivroDoPc?: boolean;
+}
+
+export interface OrderStatusHistoryItem {
+  status: OrderStatus;
+  timestamp: string;
+}
+
+export interface Courier {
+  id: string;
+  store_id: string;
+  name: string;
+  phone: string;
+  password?: string;
+  /** So na sessao do entregador logado: entregue pelo servidor no login. */
+  token?: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface CashSession {
+  id: string;
+  store_id: string;
+  status: 'open' | 'closed';
+  openingFloat: number;
+  closingFloat?: number;
+  openingTime?: string;
+  closingTime?: string;
+  notes?: string;
+  summary?: CashSummary;
+}
+
+export interface CashTransaction {
+  id?: string;
+  session_id: string;
+  type: 'Suprimento' | 'Sangria' | 'Venda';
+  amount: number;
+  justification?: string;
+  timestamp?: string;
+  store_id: string;
+}
+
+export interface CashSummary {
+  openingFloat: number;
+  cashSales: number;
+  /** Vendas em PIX e Cartão no período -- faltavam no relatório impresso de
+   * fechamento (só "Dinheiro" aparecia). Causa real da reclamação do cliente
+   * Marlon em 01/10/2026: "Deu do total. Não vi especificações de pix.
+   * Dinheiro e cartão." -- ele olhava o PAPEL impresso, que nunca teve essa
+   * quebra, mesmo a tela do sistema já mostrando por método. */
+  pixSales: number;
+  cardSales: number;
+  supplies: number;
+  withdrawals: number;
+  expected: number;
+  closingFloat: number;
+  difference: number;
+}
+
+export interface ModernGroup {
+  id: number;
+  name: string;
+  image: string;
+  categories: number[];
+}
+
+/**
+ * Barra fixa de 4 atalhos do cardápio moderno (visível em todas as telas,
+ * não só na landing) -- pedido do Ikarus, 01/10/2026. Nomes e destinos são
+ * configuráveis em Configurações, junto dos modernGroups.
+ */
+export interface QuickActionButton {
+  /** Texto do botão (ex.: "Queridinho da Semana", ou renomeado p/ "Promoção"). */
+  label: string;
+  /** Produto que abre ao clicar -- só usado quando tipo for "produto". */
+  menuItemId?: number;
+}
+
+export interface Settings {
+  id?: string;
+  store_id: string;
+  storefrontTheme?: 'classic' | 'modern';
+  modernGroups?: ModernGroup[];
+  /** Botão 1 da barra fixa: produto em destaque (ex.: "Queridinho da Semana"). */
+  quickActionProduct?: QuickActionButton;
+  /** Botão 4 da barra fixa: abre o fluxo de telefone/fidelidade (ex.: "Minha Conta"). */
+  quickActionAccountLabel?: string;
+  /** @ do Instagram da loja (sem o @), para o botão-ícone da barra fixa. */
+  instagramHandle?: string;
+  /** Endereço físico da loja, usado pelo botão-ícone de mapa (abre no Google Maps). */
+  storeAddress?: string;
+  openingTime: string;
+  closingTime: string;
+  manualStatus: 'open' | 'closed' | 'auto';
+  comboPrice: number;
+  webhookNewOrderUrl?: string;
+  webhookInProductionUrl?: string;
+  webhookOutForDeliveryUrl?: string;
+  webhookArrivedAtDoorUrl?: string;
+  isAppDiscountEnabled: boolean;
+  appDiscountPercentage: number;
+  logoUrl?: string;
+  /** Foto grande da tela inicial (Moderna). Vazio = degradê neutro. */
+  heroImageUrl?: string;
+  /**
+   * Qual modelo de fidelidade esta ativo na loja.
+   * 'selo'   = o historico: 10 pedidos elegiveis = 1 desconto (is_loyalty_eligible).
+   * 'pontos' = novo: cliente acumula pontos por valor gasto e resgata
+   *            produtos configurados. Os dois nunca ficam ativos juntos.
+   */
+  loyaltyModel?: 'selo' | 'pontos';
+  isRaffleEnabled?: boolean;
+  rafflePrizeValue?: number;
+  raffleDrawDate?: string;
+  lastRaffleWinner?: string;
+  isRatingEnabled?: boolean;
+  daysOfWeek?: string[];
+  /**
+   * Horario PERSONALIZADO por dia da semana -- Fase 1, 28/09/2026. Pedido
+   * do Ikarus: sexta/sabado abrir ou fechar num horario diferente dos
+   * demais dias. Chave = indice do dia ("0"=Dom .. "6"=Sab, mesmo padrao de
+   * `daysOfWeek`); valor = horario proprio daquele dia. Um dia SEM entrada
+   * aqui cai no `openingTime`/`closingTime` padrao (comportamento
+   * historico, nunca quebra quem nao configurou nada). undefined/{} =
+   * ninguem configurou ainda, todos os dias usam o padrao.
+   */
+  customHoursPerDay?: { [diaIndex: string]: { open: string; close: string } };
+  deliveryFee?: number;
+  minOrderValue?: number;
+  isBotEnabled?: boolean;
+  preferredPrinter?: string;
+  printerPaperWidth?: '58mm' | '80mm';
+  printerCompatibilityMode?: boolean;
+  /**
+   * Imprimir automaticamente pedidos de MESA.
+   * Quando false, o pedido e recebido normalmente mas NAO dispara impressao —
+   * o operador imprime pelo botao do card quando quiser.
+   * Nao afeta pedidos de Entrega, que seguem imprimindo sozinhos.
+   * undefined = true (comportamento historico, nao quebra quem ja usa).
+   *
+   * ATE 21/09/2026 esta mesma flag tambem controlava Retirada junto -- foi
+   * separada porque o Ikarus queria Retirada sempre imprimindo, mas a Mesa
+   * dele estava desligada de proposito (as duas caiam juntas). Ver
+   * autoPrintRetirada abaixo.
+   */
+  autoPrintDineIn?: boolean;
+  /**
+   * Imprimir automaticamente pedidos de RETIRADA. Mesma logica de
+   * autoPrintDineIn, mas independente -- desde 21/09/2026 (Ikarus: "pedidos
+   * de retirada nao imprimiu automaticamente", causa raiz era a mesma flag
+   * de Mesa desligada, afetando os dois juntos sem ele perceber).
+   * undefined = true (nunca quebra quem ja tinha o antigo comportamento).
+   */
+  autoPrintRetirada?: boolean;
+  /** Som do alerta de pedido novo: 'sino' | 'alarme' | 'campainha'. */
+  sireneTipo?: string;
+  /** Volume do alerta. 1 = normal, ate 10 para ambiente barulhento. */
+  sireneVolume?: number;
+  /** Mostra a mini-colinha de atalhos durante o lancamento. undefined = mostra. */
+  mostrarDicasAtalho?: boolean;
+  /**
+   * Layout do grid de mesas na aba Balcao.
+   * 'padrao'       = grade numerada, como sempre foi (undefined tambem cai aqui).
+   * 'personalizado' = cartoes com nome do cliente, 8 visiveis + scroll.
+   * So muda a EXIBICAO — TOTAL_MESAS e handleSelectTable sao os mesmos.
+   */
+  modeloMesas?: 'padrao' | 'personalizado';
+  /**
+   * Liga o Balcao V2 (comandas multiplas): o carrinho + a coluna de
+   * Mesa/Retirada/Entrega viram um card unico de comandas, navegavel por
+   * seta ou clique, com o carrinho migrando para dentro de um modal aberto
+   * pela tecla C. undefined/false = Balcao V1 (como sempre foi).
+   */
+  balcaoV2?: boolean;
+
+  /**
+   * Modo de reinicio do numero do pedido (#1, #2...) -- Fase 1, 28/09/2026.
+   * 'diario' (padrao/undefined) = reinicia sozinho toda meia-noite (horario
+   * de Brasilia), como sempre foi. 'mensal' = NAO reinicia sozinho nunca;
+   * so zera quando o operador clicar em "Zerar numeracao agora" nas
+   * Configuracoes (ver `zerarNumeracaoPedidos` em supabaseService.ts).
+   * O trigger do banco (`set_daily_order_number`) le esta flag para decidir
+   * se conta so' o dia ou todo o intervalo desde o ultimo reset manual.
+   */
+  orderNumberingMode?: 'diario' | 'mensal';
+  /**
+   * So' relevante quando orderNumberingMode = 'mensal'. Marca a partir de
+   * quando contar (o "zero" da contagem) -- atualizado toda vez que o
+   * operador clica em "Zerar numeracao agora". Em UTC (comparado no banco).
+   */
+  orderNumberingResetAt?: string;
+
+  // ── PIX + comprovante pelo WhatsApp (tela pos-pedido do cliente) ──
+  /** Liga a tela com a chave PIX e o botao de enviar comprovante. */
+  pixEnabled?: boolean;
+  /** A chave em si. Ex.: 44344954000197 */
+  pixKey?: string;
+  /** CNPJ | CPF | Celular | E-mail | Aleatoria */
+  pixKeyType?: string;
+  /** Nome que aparece para o cliente conferir antes de pagar. */
+  pixBeneficiary?: string;
+  /** WhatsApp da loja que recebe o comprovante (so digitos, com DDD). */
+  storeWhatsapp?: string;
+  /** Modelo do resumo enviado. Aceita as marcas {{...}} — ver MODELO_PADRAO. */
+  pixResumoTemplate?: string;
+  kitchenPrinter?: string;
+  kitchenPrinterPaperWidth?: '58mm' | '80mm';
+  barPrinter?: string;
+  barPrinterPaperWidth?: '58mm' | '80mm';
+  courierPrinter?: string;
+  courierPrinterPaperWidth?: '58mm' | '80mm';
+  courier_access_code?: string;
+  /** PIN de acesso do garcom (guardado numa tabela so do dono). */
+  garcom_pin?: string;
+  defaultDDD?: string;
+  bolaoStartTime?: string;
+  bolaoEndTime?: string;
+
+  // Balança Eletrônica (Urano / Toledo / Filizola / Elgin)
+  isScaleEnabled?: boolean;
+  scaleProtocol?: 'urano' | 'toledo' | 'filizola' | 'elgin' | 'generic';
+  scaleBaudRate?: number;
+  scalePricePerKg?: number;
+  scaleAutoAdd?: boolean;
+  scalePortName?: string;
+}
+
+export interface Promotion {
+  id: string | number;
+  name: string;
+  description?: string;
+  price: number;
+  image?: string;
+  isActive: boolean;
+  store_id: string;
+  daysOfWeek?: string[];
+}
+
+export interface TvAd {
+  id?: string;
+  store_id?: string;
+  title: string;
+  image_url: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface DeliveryZone {
+  id: string;
+  store_id: string;
+  neighborhood_name: string;
+  fee: number;
+  is_active: boolean;
+}
+
+/** Condições financeiras de uma loja de comissão (tabela privada loja_financeiro: só o dono e o administrador leem). */
+export interface LojaFinanceiro {
+  store_id: string;
+  /** Comissão (%) quando o lojista entrega o pedido. */
+  comissao_pct_propria: number;
+  /** Comissão (%) quando a entrega é feita pelo app (motoboy da plataforma). */
+  comissao_pct_app: number;
+  /** Parte fixa da comissão por pedido (R$), para o pedido pequeno não sumir no custo do pagamento. */
+  comissao_fixa: number;
+  /** Repassa ao lojista o custo do pagamento online (a taxa do gateway) de forma explícita. */
+  repassa_taxa_pagamento: boolean;
+  /** Teto do débito de comissão acumulado em pedidos pagos em dinheiro. */
+  limite_debito: number;
+  /** Débito atual (R$) de comissão de pedidos em dinheiro. Mantido pelo servidor. */
+  debito_dinheiro: number;
+}
+
+/** Padrões da plataforma, copiados para cada loja nova (tabela plataforma_config, uma linha). */
+export type PadroesPlataforma = Omit<LojaFinanceiro, 'store_id' | 'debito_dinheiro'>;

@@ -1,0 +1,3089 @@
+import { createClient } from '@supabase/supabase-js';
+import { Category, MenuItem, Addon, Order, Settings, Store, Customer, CashSession, CashTransaction, Promotion, LoyaltyRewardItem, FiscalConfig, NotaFiscal, LojaFinanceiro, PadroesPlataforma } from '../types';
+import { enviarImagem, enviarImagemComprimida, imagensR2Ativas, ErroDeCompressao, type TipoImagem } from './imagemService';
+
+// Firebase removido em 28/09/2026: nunca esteve configurado neste projeto
+// (todas as chaves em .env.local vazias) -- uploadMenuImage/uploadStoreLogo
+// migraram para o Supabase Storage, bucket `assets` (ver essas funcoes
+// abaixo). Ver claude-acai.md, "Upload de imagem migrado de Firebase".
+
+// Configuração via variáveis de ambiente (.env / .env.local).
+// Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY quando o novo banco for criado.
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+
+export const isSupabaseConfigured = !!SUPABASE_URL && !!SUPABASE_ANON_KEY;
+
+/**
+ * Chave canonica de telefone -- 21/09/2026 (Ikarus).
+ *
+ * O cliente pode digitar o mesmo numero de 4 formas diferentes e todas
+ * precisam bater no MESMO cadastro, DESDE QUE o DDD seja o mesmo:
+ *   32920007226  (DDD + 9 + local)
+ *   3220007226   (DDD + local, sem o 9)
+ *   920007226    (9 + local, sem DDD -- so cabe assumir o DDD da loja)
+ *   20007226     (so o local -- so cabe assumir o DDD da loja)
+ *
+ * CUIDADO (Ikarus, 21/09/2026): "vai ter gente que vai pedir com telefone de
+ * outro estado". Por isso o DDD digitado pelo cliente e SEMPRE respeitado
+ * quando ele digita 10+ digitos -- nunca trocamos por outro DDD so porque
+ * bate com o numero local de outra pessoa. O default (DDD da loja) so entra
+ * quando o cliente digitou pouco (8-9 digitos), sem DDD nenhum -- aí a unica
+ * saida razoavel e assumir a regiao da loja.
+ *
+ * O valor salvo no banco e SEMPRE `DDD(2) + local(8)` = 10 digitos --
+ * nunca inclui o 9o digito. Isso colapsa a ambiguidade do 9o digito DENTRO
+ * do mesmo DDD, sem nunca juntar clientes de DDDs diferentes.
+ */
+export function canonicalPhone(rawPhone: string, defaultDDD: string = '32'): string {
+    let digits = (rawPhone || '').replace(/\D/g, '');
+    // Remove "55" do Brasil na frente, se sobrar DDD+9+local (13) ou DDD+local (12).
+    if (digits.startsWith('55') && (digits.length === 13 || digits.length === 12)) {
+        digits = digits.substring(2);
+    }
+    if (digits.length <= 8) {
+        // So o numero local, sem DDD algum -- nao ha o que fazer alem de
+        // assumir a regiao da loja.
+        return defaultDDD + digits.slice(-8);
+    }
+    const local = digits.slice(-8); // ultimos 8 digitos = numero local, sem o 9
+    const resto = digits.slice(0, -8); // o que sobra antes: DDD, ou DDD+9
+    // "resto" tem o DDD REAL que o cliente digitou (ex: "11" de Sao Paulo,
+    // "21" do Rio) -- nunca trocamos por defaultDDD quando ele existe.
+    const ddd = resto.length >= 2 ? resto.slice(0, 2) : defaultDDD;
+    return ddd + local;
+}
+
+const supabaseUrlForClient = SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseKeyForClient = SUPABASE_ANON_KEY || 'placeholder';
+
+
+const electronStorage = {
+    getItem: async (key: string) => {
+        if (typeof window !== 'undefined' && (window as any).electron?.storage) {
+            const val = await (window as any).electron.storage.getItem(key);
+            return val;
+        }
+        return window.localStorage.getItem(key);
+    },
+    setItem: async (key: string, value: string) => {
+        if (typeof window !== 'undefined' && (window as any).electron?.storage) {
+            await (window as any).electron.storage.setItem(key, value);
+        }
+        window.localStorage.setItem(key, value); 
+    },
+    removeItem: async (key: string) => {
+        if (typeof window !== 'undefined' && (window as any).electron?.storage) {
+            await (window as any).electron.storage.removeItem(key);
+        }
+        window.localStorage.removeItem(key);
+    }
+};
+
+export const supabase = createClient(supabaseUrlForClient, supabaseKeyForClient, {
+  auth: {
+    storage: electronStorage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false
+  }
+});
+
+export const ORDER_COLUMNS = 'id, timestamp, daily_order_number, customer_name, phone, address, reference_point, order_type, payment_method, status, change_for, items, total, store_id, printed, observation, table_number, comanda_number, discount, tax, rating, feedback, delivery_fee, combo_price, origin, is_loyalty_eligible, loyalty_redeemed_at, status_history, courier_id, courier_name';
+
+// --- Mapping Helpers ---
+export const mapMenuItemFromDB = (item: any, addons?: Addon[]): MenuItem => {
+    const itemSpecificAddonIds = item.allowed_addons;
+    const hydratedAddons = (itemSpecificAddonIds || [])
+        .map((entry: any) => {
+            const id = typeof entry === 'object' ? entry.id : entry;
+            return addons?.find((a: any) => a.id === id);
+        })
+        .filter(Boolean);
+
+    return {
+        ...item,
+        price: Number(item.price) || 0,
+        // Mesmo nome nos dois lados (codigo), mas garantimos o tipo numérico:
+        // vindo do banco como string, a comparação no atalho falharia.
+        codigo: item.codigo !== null && item.codigo !== undefined ? Number(item.codigo) : undefined,
+        categoryId: item.category_id || item.categoryId,
+        isAvailable: item.is_available ?? item.isAvailable ?? true,
+        somenteBalcao: item.somente_balcao ?? item.somenteBalcao ?? false,
+        saboresComQuantidade: item.sabores_com_quantidade ?? item.saboresComQuantidade ?? false,
+        eligibleForCombo: item.eligible_for_combo ?? item.eligibleForCombo ?? false,
+        isCombo: item.is_combo ?? item.isCombo ?? false,
+        allowedAddons: itemSpecificAddonIds,
+        selectedAddons: hydratedAddons,
+        addons: (itemSpecificAddonIds === null)
+            ? (addons?.filter((a: any) => a.categoryId === (item.category_id || item.categoryId)) || [])
+            : [],
+        // Campos fiscais (NFC-e) -- colunas existem desde add_fiscal_config.sql
+        // mas nunca tinham sido mapeadas para o app (ficavam mortas). 21/09/2026.
+        unidadeFiscal: item.unidade_fiscal ?? item.unidadeFiscal,
+        origemFiscal: item.origem_fiscal ?? item.origemFiscal,
+        cfopFiscal: item.cfop_fiscal ?? item.cfopFiscal,
+        csosnFiscal: item.csosn_fiscal ?? item.csosnFiscal,
+    };
+};
+
+export const mapMenuItemToDB = (item: Partial<MenuItem>) => {
+    const {
+        id, categoryId, isAvailable, somenteBalcao, saboresComQuantidade, eligibleForCombo, isCombo,
+        selectedAddons, allowedAddons, addons,
+        unidadeFiscal, origemFiscal, cfopFiscal, csosnFiscal,
+        ...rest
+    } = item as any;
+
+    const payload: any = { ...rest };
+    if (categoryId !== undefined) payload.category_id = categoryId;
+    if (isAvailable !== undefined) payload.is_available = isAvailable;
+    if (somenteBalcao !== undefined) payload.somente_balcao = somenteBalcao;
+    if (saboresComQuantidade !== undefined) payload.sabores_com_quantidade = saboresComQuantidade;
+    if (eligibleForCombo !== undefined) payload.eligible_for_combo = eligibleForCombo;
+    if (isCombo !== undefined) payload.is_combo = isCombo;
+    if (selectedAddons !== undefined) payload.selected_addons = Array.isArray(selectedAddons) ? selectedAddons.map((a: any) => a.id) : selectedAddons;
+    if (allowedAddons !== undefined) payload.allowed_addons = allowedAddons;
+    // Campos fiscais (NFC-e) -- ver mapMenuItemFromDB.
+    if (unidadeFiscal !== undefined) payload.unidade_fiscal = unidadeFiscal;
+    if (origemFiscal !== undefined) payload.origem_fiscal = origemFiscal;
+    if (cfopFiscal !== undefined) payload.cfop_fiscal = cfopFiscal;
+    if (csosnFiscal !== undefined) payload.csosn_fiscal = csosnFiscal;
+
+    // Remove any remaining camelCase or virtual fields that might be in rest
+    delete payload.categoryId;
+    delete payload.isAvailable;
+    delete payload.eligibleForCombo;
+    delete payload.isCombo;
+    delete payload.isSelected;
+
+    return payload;
+};
+
+// --- Promotion Mapping Helpers ---
+export const mapPromotionFromDB = (data: any): Promotion => {
+    return {
+        ...data,
+        price: Number(data.price) || 0,
+        isActive: data.isActive ?? data.is_active ?? true,
+        daysOfWeek: data.days_of_week || data.daysOfWeek
+    };
+};
+
+export const mapPromotionToDB = (promo: Partial<Promotion>) => {
+    const { isActive, daysOfWeek, ...rest } = promo as any;
+    const payload: any = { ...rest };
+    
+    if (isActive !== undefined) payload.is_active = isActive;
+    if (daysOfWeek !== undefined) payload.days_of_week = daysOfWeek;
+    
+    delete payload.isActive;
+    delete payload.daysOfWeek;
+    
+    return payload;
+};
+
+
+export const mapAddonFromDB = (addon: any): Addon => {
+    return {
+        ...addon,
+        price: Number(addon.price) || 0,
+        categoryId: addon.category_id || addon.categoryId,
+        isAvailable: addon.is_available ?? addon.isAvailable ?? true,
+        addonGroup: addon.addon_group || addon.addonGroup || undefined,
+        tipoComplemento: addon.tipo_complemento || addon.tipoComplemento || undefined,
+    };
+};
+
+export const mapAddonToDB = (addon: Partial<Addon>) => {
+    const { id, categoryId, isAvailable, isSelected, daysOfWeek, addonGroup, tipoComplemento, ...rest } = addon as any;
+    const payload: any = { ...rest };
+    if (categoryId !== undefined) payload.category_id = categoryId;
+    if (isAvailable !== undefined) payload.is_available = isAvailable;
+    if (daysOfWeek !== undefined) payload.days_of_week = daysOfWeek;
+    if (addonGroup !== undefined) payload.addon_group = addonGroup || null;
+    // undefined = não mexe (banco sem a coluna continua salvando); null = o admin tirou o tipo.
+    if (tipoComplemento !== undefined) payload.tipo_complemento = tipoComplemento || null;
+
+    delete payload.categoryId;
+    delete payload.isAvailable;
+    delete payload.isSelected;
+    delete payload.daysOfWeek;
+
+    return payload;
+};
+
+// --- Menu Management Functions ---
+/**
+ * Cardápio para quem compra. Por padrão ESCONDE os produtos `somente_balcao`
+ * (ADD3, ADD5...); o garçom (salão) passa `incluirSomenteBalcao: true`.
+ * O filtro é feito aqui, depois de ler, e não na query, para continuar
+ * funcionando mesmo antes da coluna existir no banco.
+ */
+export const fetchMenuForCustomer = async (storeId: string, opcoes?: { incluirSomenteBalcao?: boolean }) => {
+    // Change sort to ID to respect insertion order (New categories go to end)
+    const { data: categories, error: catError } = await supabase.from('categories').select('*').eq('store_id', storeId).order('id', { ascending: true });
+    if (catError) throw catError;
+
+    const { data: menuItems, error: itemError } = await supabase.from('menu_items').select('*').eq('store_id', storeId).order('name');
+    if (itemError) throw itemError;
+
+    const { data: addonsRaw, error: addonError } = await supabase.from('addons').select('*').eq('store_id', storeId).order('name');
+    if (addonError) throw addonError;
+
+    const addons = (addonsRaw || []).map(mapAddonFromDB);
+    const mappedItems = (menuItems || [])
+        .map((item: any) => mapMenuItemFromDB(item, addons))
+        .filter((item: MenuItem) => opcoes?.incluirSomenteBalcao || !item.somenteBalcao);
+
+    mappedItems.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+    return { categories, menuItems: mappedItems, addons };
+};
+
+export const fetchMenuForAdmin = async (storeId: string) => {
+    // Change sort to ID to respect insertion order
+    const { data: categories, error: catError } = await supabase.from('categories').select('*').eq('store_id', storeId).order('id', { ascending: true });
+    if (catError) throw catError;
+
+    const { data: menuItems, error: itemError } = await supabase.from('menu_items').select('*').eq('store_id', storeId).order('name');
+    if (itemError) throw itemError;
+
+    const { data: addonsRaw, error: addonError } = await supabase.from('addons').select('*').eq('store_id', storeId).order('name');
+    if (addonError) throw addonError;
+
+    const addons = (addonsRaw || []).map(mapAddonFromDB);
+    const mappedItems = (menuItems || []).map((item: any) => mapMenuItemFromDB(item, addons));
+
+    return { categories, menuItems: mappedItems, addons };
+};
+
+
+// --- Category Management ---
+export const createCategory = async (category: Omit<Category, 'id'>) => {
+    const { data, error } = await supabase.from('categories').insert(category).select().single();
+    if (error) throw error;
+    return data;
+};
+
+export const updateCategory = async (id: number, updates: Partial<Category>) => {
+    const { data, error } = await supabase.from('categories').update(updates).eq('id', id).select().single();
+    if (error) throw error;
+    return data;
+};
+
+export const deleteCategory = async (id: number) => {
+    const { error } = await supabase.from('categories').delete().eq('id', id);
+    if (error) throw error;
+};
+
+// --- Menu Item Management ---
+export const createMenuItem = async (item: Omit<MenuItem, 'id'>) => {
+    const payload = mapMenuItemToDB(item);
+    const { data, error } = await supabase.from('menu_items').insert(payload).select();
+    if (error) throw error;
+    const createdItem = data?.[0];
+    if (!createdItem) throw new Error("Falha ao criar item: Nenhum dado retornado.");
+    return mapMenuItemFromDB(createdItem);
+};
+
+export const updateMenuItem = async (id: number, updates: Partial<MenuItem>) => {
+    const payload = mapMenuItemToDB(updates);
+    const { data, error } = await supabase.from('menu_items').update(payload).eq('id', id).select();
+    if (error) throw error;
+
+    const updatedItem = data?.[0];
+    if (!updatedItem) throw new Error("Item not found or update failed");
+
+    return mapMenuItemFromDB(updatedItem);
+};
+
+export const deleteMenuItem = async (id: number) => {
+    const { error } = await supabase.from('menu_items').delete().eq('id', id);
+    if (error) throw error;
+};
+
+// --- Addon Management ---
+// --- Addon Management ---
+export const createAddon = async (addon: Omit<Addon, 'id'>) => {
+    const payload = mapAddonToDB(addon);
+    const { data, error } = await supabase.from('addons').insert(payload).select().single();
+    if (error) throw error;
+    return mapAddonFromDB(data);
+};
+
+export const updateAddon = async (id: string | number, updates: Partial<Addon>) => {
+    const payload = mapAddonToDB(updates);
+    const { data, error } = await supabase.from('addons').update(payload).eq('id', id).select().single();
+    if (error) throw error;
+    return mapAddonFromDB(data);
+};
+
+export const deleteAddon = async (id: string | number) => {
+    const { error } = await supabase.from('addons').delete().eq('id', id);
+    if (error) throw error;
+};
+
+// --- Order Mapping Helpers ---
+export const mapOrderToDB = (order: any) => {
+    const dbOrder: any = {
+        id: order.id,
+        timestamp: order.timestamp || new Date().toISOString(),
+        daily_order_number: order.dailyOrderNumber !== undefined ? order.dailyOrderNumber : order.daily_order_number,
+        customer_name: order.customerName,
+        phone: order.phone,
+        address: order.address,
+        reference_point: order.referencePoint,
+        order_type: order.orderType,
+        payment_method: order.paymentMethod,
+        status: order.status,
+        change_for: order.changeFor,
+        items: order.items,
+        total: order.total,
+        store_id: order.store_id,
+        printed: order.printed !== undefined ? order.printed : false,
+        observation: order.observation,
+        table_number: order.table_number,
+        comanda_number: order.comandaNumber,
+        discount: order.discount,
+        tax: order.tax,
+        rating: order.rating,
+        feedback: order.feedback,
+        delivery_fee: order.deliveryFee,
+        combo_price: order.comboPrice,
+        origin: order.origin,
+        status_history: order.statusHistory,
+        courier_id: (order.courier_id || order.courierId) || undefined,
+        courier_name: (order.courier_name || order.courierName) || undefined,
+        is_loyalty_eligible: order.total !== undefined ? (order.total + (order.discount || 0)) >= 35.00 : undefined
+    };
+
+    // Remove undefined or null fields
+    Object.keys(dbOrder).forEach(key => {
+        if (dbOrder[key] === undefined || dbOrder[key] === null) delete dbOrder[key];
+    });
+
+    // Fix: Remove empty phone string to allow database to handle it as NULL
+    if (dbOrder.phone === '') {
+        delete dbOrder.phone;
+    }
+
+    return dbOrder;
+};
+
+export const mapOrderFromDB = (dbOrder: any): Order => {
+    return {
+        id: dbOrder.id,
+        timestamp: dbOrder.timestamp || new Date().toISOString(),
+        dailyOrderNumber: dbOrder.daily_order_number || dbOrder.dailyOrderNumber,
+        customerName: dbOrder.customer_name || dbOrder.customerName,
+        phone: dbOrder.phone,
+        address: dbOrder.address,
+        referencePoint: dbOrder.reference_point || dbOrder.referencePoint,
+        orderType: dbOrder.order_type || dbOrder.orderType,
+        paymentMethod: dbOrder.payment_method || dbOrder.paymentMethod,
+        status: dbOrder.status,
+        changeFor: dbOrder.change_for || dbOrder.changeFor,
+        items: (dbOrder.items || []).map((item: any) => ({
+            ...item,
+            // Ensure price is a number and handle different potential field names
+            price: Number(item.price || item.unitPrice || item.unit_price) || 0,
+            selectedAddons: (item.selectedAddons || item.addons || []).map((addon: any) => ({
+                ...addon,
+                price: Number(addon.price || addon.unitPrice || addon.unit_price) || 0
+            }))
+        })),
+        total: Number(dbOrder.total) || 0,
+        store_id: dbOrder.store_id || dbOrder.storeId,
+        printed: dbOrder.printed,
+        observation: dbOrder.observation,
+        table_number: dbOrder.table_number || dbOrder.tableNumber,
+        comandaNumber: dbOrder.comanda_number || dbOrder.comandaNumber,
+        discount: Number(dbOrder.discount) || 0,
+        tax: Number(dbOrder.tax) || 0,
+        rating: dbOrder.rating ? Number(dbOrder.rating) : undefined,
+        feedback: dbOrder.feedback,
+
+        deliveryFee: Number(dbOrder.delivery_fee || dbOrder.deliveryFee) || 0,
+        comboPrice: Number(dbOrder.combo_price || dbOrder.comboPrice || 13) || 13,
+        origin: dbOrder.origin,
+        statusHistory: dbOrder.status_history || dbOrder.statusHistory,
+        pagamentos: Array.isArray(dbOrder.pagamentos) ? dbOrder.pagamentos : undefined,
+        courier_id: dbOrder.courier_id,
+        courier_name: dbOrder.courier_name
+    };
+};
+
+// --- Order Management ---
+export const fetchActiveOrders = async (storeId: string) => {
+    const garcom = dosGarcom(storeId);
+    if (garcom) {
+        const r = await supabase.rpc('garcom_pedidos_ativos', { p_store: storeId, p_token: garcom.token });
+        if (r.error) throw r.error;
+        return ((r.data as any[]) || []).map(mapOrderFromDB);
+    }
+    const { data, error } = await supabase
+        .from('orders')
+        .select(ORDER_COLUMNS)
+        .eq('store_id', storeId)
+        .in('status', ['Novo', 'Em Produção', 'A Caminho', 'Conta Solicitada', 'No Portão'])
+        .order('timestamp', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapOrderFromDB);
+};
+
+export const fetchOrderHistory = async (storeId: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const { data, error } = await supabase
+        .from('orders')
+        .select(ORDER_COLUMNS)
+        .eq('store_id', storeId)
+        .in('status', ['Entregue', 'Cancelado'])
+        .gte('timestamp', today.toISOString())
+        .order('timestamp', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapOrderFromDB);
+};
+
+/** Guarda o motivo do cancelamento (a plataforma audita cancelamento: comissão não pode ser burlada cancelando pedido). */
+export const registrarMotivoCancelamento = async (orderId: string, motivo: string) => {
+    const { error } = await supabase.from('orders').update({ cancel_reason: motivo }).eq('id', orderId);
+    if (error) console.warn('[cancelamento] motivo não gravado (a coluna orders.cancel_reason existe? SQL 4):', error.message);
+};
+
+export const updateOrderStatus = async (orderId: string, status: Order['status']) => {
+    // 1. Fetch current history to append properly (avoiding overwrite if possible, though strict atomic append needs RPC or complex query)
+    const { data: currentOrder } = await supabase
+        .from('orders')
+        .select('status_history')
+        .eq('id', orderId)
+        .single();
+    
+    let updatedHistory: any[] = [];
+    if (currentOrder && currentOrder.status_history && Array.isArray(currentOrder.status_history)) {
+        updatedHistory = [...currentOrder.status_history];
+    }
+    
+    // Append new status
+    updatedHistory.push({
+        status: status,
+        timestamp: new Date().toISOString()
+    });
+
+    const { data, error } = await supabase
+        .from('orders')
+        .update({ status, status_history: updatedHistory })
+        .eq('id', orderId)
+        .select(ORDER_COLUMNS);
+    if (error) throw error;
+
+    const updatedOrders = data ? data.map(mapOrderFromDB) : [];
+
+    // Estorno de pontos ao cancelar -- regra fechada com o Ikarus,
+    // 21/09/2026: "pedido for cancelado a gente retira o ponto". Mesma
+    // condicao do credito (creditarPontosDoPedido, em createOrder): so
+    // modelo 'pontos', so pedidos WEB/APP, nunca bloqueando a operacao de
+    // cancelar se o estorno falhar (roda em background, so loga erro).
+    if (status === 'Cancelado' && updatedOrders[0]) {
+        const order = updatedOrders[0];
+        const ehDoSite = order.origin === 'WEB' || order.origin === 'APP';
+        if (ehDoSite && order.phone && order.store_id) {
+            fetchPublicSettings(order.store_id).then(settings => {
+                if (settings.loyaltyModel === 'pontos') {
+                    estornarPontosDoPedido(orderId, order.phone!, order.store_id, order.total)
+                        .catch(e => console.error('Error reverting loyalty points on cancel:', e));
+                }
+            }).catch(e => console.error('Error fetching settings for loyalty revert:', e));
+
+            // Pedido que entregava um produto RESGATADO com pontos: cancelou, os
+            // pontos do resgate voltam (auditoria de 05/10/2026). Independe do modelo
+            // atual: so age se existir um lancamento de resgate ligado a este pedido.
+            estornarResgateDoPedido(orderId, order.phone, order.store_id)
+                .catch(e => console.error('Error returning redeemed loyalty points on cancel:', e));
+        }
+    }
+
+    return updatedOrders;
+};
+
+
+export const markOrderItemsAsPrinted = async (orderId: string, cartIds?: string[]) => {
+    // 1. Fetch current items to be safe and merge
+    const { data: order } = await supabase.from('orders').select('items').eq('id', orderId).single();
+    if (!order) return;
+
+    const updatedItems = (order.items || []).map((item: any) => {
+        if (cartIds) {
+            return cartIds.includes(item.cartId) ? { ...item, printed: true } : item;
+        }
+        return { ...item, printed: true };
+    });
+
+    const allPrinted = updatedItems.every((i: any) => i.printed);
+
+    const { error } = await supabase
+        .from('orders')
+        .update({ items: updatedItems, printed: allPrinted })
+        .eq('id', orderId);
+
+    if (error) throw error;
+};
+
+// Atomic Lock: Only updates if printed is FALSE. Returns true if successful.
+export const claimOrderPrinting = async (orderId: string): Promise<boolean> => {
+    const { data, error } = await supabase
+        .from('orders')
+        .update({ printed: true })
+        .eq('id', orderId)
+        .or('printed.eq.false,printed.is.null') // Atomic check supporting NULL
+        .select(ORDER_COLUMNS);
+
+    if (error) {
+        console.error("Error claiming print lock:", error);
+        return false;
+    }
+    // If data is returned, we successfully updated the row. If empty, it was already true.
+    return !!data && data.length > 0;
+};
+
+
+/**
+ * ⚠️ OBSOLETA -- NAO USAR. Mantida so' porque pode haver import externo
+ * (n8n/automacao antiga); NENHUM lugar do app deve chamar isto.
+ *
+ * BUG (achado e corrigido em WaiterPage.tsx, 28/09/2026): `new
+ * Date().toISOString().split('T')[0]` calcula "hoje" em UTC, nao no fuso de
+ * Brasilia. Depois das 21h locais (=meia-noite UTC) esta funcao ja acha que
+ * virou o dia seguinte e devolve numero 1, enquanto o TRIGGER DO BANCO
+ * (`set_daily_order_number`, correto, usa America/Sao_Paulo) ainda esta no
+ * dia de ontem ate meia-noite de verdade -- resultado: pedido criado com
+ * numero divergente do resto do dia, causa raiz do "a numeracao reinicia
+ * sozinha" relatado pelo Ikarus.
+ *
+ * A forma certa (ja usada em CounterTab/CustomerPage/WaiterPage): mandar
+ * `dailyOrderNumber: 0` ao criar o pedido e deixar o TRIGGER DO BANCO
+ * calcular -- ele roda no fuso certo e é atomico (evita race condition que
+ * o calculo no frontend tambem tinha).
+ */
+export const getNextDailyOrderNumber = async (storeId: string): Promise<number> => {
+    const today = new Date().toISOString().split('T')[0];
+    const { data, error } = await supabase
+        .from('orders')
+        .select('daily_order_number')
+        .eq('store_id', storeId)
+        .gte('timestamp', `${today}T00:00:00`)
+        .lte('timestamp', `${today}T23:59:59`)
+        .order('daily_order_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        console.error('Error fetching next order number:', error);
+        return Math.floor(Math.random() * 1000); // Fallback
+    }
+
+    return (data?.daily_order_number || 0) + 1;
+};
+
+/**
+ * Fidelidade por pontos — regra fechada com o Icaro (17/09/2026):
+ * a cada faixa de R$15, 1 ponto; arredonda para cima quando faltam <= 4
+ * para o proximo multiplo de 15 (ex.: R$26 a R$40 = 2 pontos, nao so
+ * a partir de R$41). Resgate (produto gratis) NAO soma para esta conta —
+ * quem chama esta funcao deve passar so o valor efetivamente pago.
+ */
+export function calcularPontosGanhos(valorPago: number): number {
+    if (valorPago < 11) return 0;
+    const base = Math.floor(valorPago / 15);
+    const resto = valorPago % 15;
+    return resto >= 11 ? base + 1 : base;
+}
+
+/** Os ate 4 produtos resgataveis configurados pela loja. */
+/**
+ * Configuracao fiscal da loja (NFC-e) — 1 linha por loja, tabela
+ * `fiscal_config`. Ver claude-acai.md, "ARQUITETURA TECNICA DA NFC-e".
+ * `null` quando a loja ainda nao tem config salva (primeira vez na tela).
+ */
+export const fetchFiscalConfig = async (storeId: string): Promise<FiscalConfig | null> => {
+    const { data, error } = await supabase
+        .from('fiscal_config')
+        .select('*')
+        .eq('store_id', storeId)
+        .maybeSingle();
+    if (error) throw error;
+    return data;
+};
+
+/**
+ * Salva a configuracao fiscal. Upsert por `store_id` (UNIQUE na tabela) —
+ * cria na primeira vez, atualiza depois. NUNCA inclui `csc_token` vindo do
+ * front sem o usuario ter digitado de novo (ver FiscalTab: campo de senha
+ * so envia se preenchido, para nao sobrescrever com vazio sem querer).
+ */
+export const saveFiscalConfig = async (
+    storeId: string,
+    config: Partial<Omit<FiscalConfig, 'id' | 'store_id'>>
+): Promise<FiscalConfig> => {
+    const { data, error } = await supabase
+        .from('fiscal_config')
+        .upsert({ ...config, store_id: storeId, updated_at: new Date().toISOString() }, { onConflict: 'store_id' })
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+};
+
+/**
+ * NFC-e — Fase 2, 28/09/2026. So a parte de BANCO (gravar/ler/atualizar
+ * `notas_fiscais`). A chamada de verdade para a API fiscal e' feita pela
+ * Edge Function `emitir-nfce` (ver supabase/functions/emitir-nfce) -- o
+ * front NUNCA fala direto com Focus NFe/eNotas, nunca ve token nenhum.
+ */
+
+/**
+ * Regra de ouro (skill nfce, item 7): GRAVAR como 'pendente' ANTES de
+ * chamar a API fiscal. Se a luz cair entre a chamada e a resposta, a nota
+ * fica registrada em vez de sumir. Chamado pelo createOrder logo apos criar
+ * o pedido -- NUNCA bloqueia a venda se der erro (mesmo padrao non-blocking
+ * do webhook/fidelidade, ver createOrder abaixo).
+ */
+export const criarNotaFiscalPendente = async (params: {
+    storeId: string;
+    /** Opcional: o botao manual de teste (FiscalTab) nao tem pedido real. */
+    orderId?: string;
+    serie: number;
+    numero: number;
+    valorTotal: number;
+    emitidaPorEstacao?: string;
+}): Promise<NotaFiscal> => {
+    const { data, error } = await supabase
+        .from('notas_fiscais')
+        .insert({
+            store_id: params.storeId,
+            order_id: params.orderId || null,
+            serie: params.serie,
+            numero: params.numero,
+            valor_total: params.valorTotal,
+            status: 'pendente',
+            emitida_por_estacao: params.emitidaPorEstacao || null,
+        })
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+};
+
+/** Le a fila de notas em 'pendente' ou 'contingencia' -- para reprocessar. */
+export const fetchNotasFiscaisPendentes = async (storeId: string): Promise<NotaFiscal[]> => {
+    const { data, error } = await supabase
+        .from('notas_fiscais')
+        .select('*')
+        .eq('store_id', storeId)
+        .in('status', ['pendente', 'contingencia'])
+        .order('numero', { ascending: true });
+    if (error) throw error;
+    return data || [];
+};
+
+/** Relatorio: notas de um periodo, mais recentes primeiro. */
+export const fetchNotasFiscais = async (
+    storeId: string,
+    filtro?: { dataInicio?: string; dataFim?: string; status?: NotaFiscal['status'] }
+): Promise<NotaFiscal[]> => {
+    let query = supabase
+        .from('notas_fiscais')
+        .select('*')
+        .eq('store_id', storeId)
+        .order('data_emissao', { ascending: false });
+    if (filtro?.dataInicio) query = query.gte('data_emissao', filtro.dataInicio);
+    if (filtro?.dataFim) query = query.lte('data_emissao', filtro.dataFim);
+    if (filtro?.status) query = query.eq('status', filtro.status);
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+};
+
+/**
+ * Proximo numero de nota para a serie da loja. NAO incrementa nada sozinho
+ * (a serializacao de verdade acontece na Edge Function, com lock); aqui e'
+ * so para a UI mostrar uma previa ou para o fallback local funcionar em
+ * contingencia. Usa o maior `numero` ja gravado OU o `numero_inicial`
+ * configurado manualmente (o que for maior) -- nunca reaproveita um numero
+ * que ja tenha nota gravada.
+ */
+export const calcularProximoNumeroNota = async (storeId: string, serie: number, numeroInicialConfigurado?: number): Promise<number> => {
+    const { data, error } = await supabase
+        .from('notas_fiscais')
+        .select('numero')
+        .eq('store_id', storeId)
+        .eq('serie', serie)
+        .order('numero', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (error) throw error;
+    const ultimoGravado = data?.numero || 0;
+    const base = Math.max(ultimoGravado, (numeroInicialConfigurado || 1) - 1);
+    return base + 1;
+};
+
+/**
+ * Upload do certificado digital A1 (.pfx/.p12) -- Fase 2, 28/09/2026.
+ *
+ * ⚠️ NAO usar o padrao do Firebase Storage (`uploadMenuImage`) aqui, por
+ * DOIS motivos, nao so um:
+ *   1. Aquele bucket e' de imagens de cardapio, publico -- errado para um
+ *      arquivo sensivel como certificado, mesmo que o Firebase estivesse
+ *      configurado.
+ *   2. O Firebase NEM ESTA CONFIGURADO neste projeto (confirmado por Ikarus,
+ *      28/09/2026): todas as chaves em `.env.local` estao vazias,
+ *      `isFirebaseConfigured` e' `false`, `storage` e' `null`. O proprio
+ *      `uploadMenuImage` nunca funcionou de verdade aqui -- e' codigo morto
+ *      esperando um projeto Firebase que ainda nao foi criado.
+ * Por isso o certificado vai para um bucket PRIVADO do Supabase Storage
+ * (`certificados-fiscais`, criado com `public: false`), cuja politica de
+ * leitura so permite a service role (Edge Function) -- nunca o front, nem
+ * com o usuario logado. So a senha do certificado NAO vai nem para o
+ * Storage: essa fica direto como secret da Edge Function
+ * (`supabase secrets set CERT_SENHA_<STORE_ID>=...`), passada fora desta
+ * tela (nunca digitada no navegador/Electron).
+ */
+export const uploadCertificadoFiscal = async (file: File, storeId: string): Promise<{ path: string; nomeArquivo: string }> => {
+    // Nome unico por envio: sem upsert (que exigiria policy de leitura/UPDATE no
+    // bucket, e o bucket nao pode ser legivel pelo app). A Edge Function
+    // `cadastrar-empresa-brasilnfe` apaga o arquivo depois de enviar ao Brasil NFe.
+    const path = `${storeId}/certificado-${Date.now()}.${file.name.split('.').pop()}`;
+    const { error } = await supabase.storage
+        .from('certificados-fiscais')
+        .upload(path, file, { upsert: false });
+    if (error) throw error;
+    return { path, nomeArquivo: file.name };
+};
+
+export interface CscAmbienteInput { id?: string; token?: string }
+export interface CadastroBrasilNFeResultado {
+    ok: boolean;
+    erro?: string;
+    etapas?: string[];
+    avisos?: string[];
+    certificadoValidade?: string | null;
+    url?: string;
+    expirado?: boolean;
+    dtExpiracao?: string;
+}
+
+const chamarCadastroBrasilNFe = async (body: Record<string, unknown>): Promise<CadastroBrasilNFeResultado> => {
+    const { data, error } = await supabase.functions.invoke('cadastrar-empresa-brasilnfe', { body });
+    if (error) return { ok: false, erro: error.message };
+    return data as CadastroBrasilNFeResultado;
+};
+
+/**
+ * Envia os dados fiscais da loja + certificado ao Brasil NFe. A senha do
+ * certificado e o CSC atravessam a Edge Function uma unica vez e nao sao
+ * gravados em lugar nenhum.
+ */
+export const cadastrarEmpresaBrasilNFe = (
+    storeId: string,
+    params: { senhaCertificado?: string; csc?: { producao?: CscAmbienteInput; homologacao?: CscAmbienteInput } }
+) => chamarCadastroBrasilNFe({ acao: 'cadastrar', storeId, ...params });
+
+export const gerarLinkAtivacaoBrasilNFe = (storeId: string) =>
+    chamarCadastroBrasilNFe({ acao: 'link_ativacao', storeId });
+
+export const verificarCertificadoBrasilNFe = (storeId: string) =>
+    chamarCadastroBrasilNFe({ acao: 'verificar_certificado', storeId });
+
+export const fetchLoyaltyRewardItems = async (storeId: string): Promise<LoyaltyRewardItem[]> => {
+    const { data, error } = await supabase
+        .from('loyalty_reward_items')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+};
+
+/**
+ * Substitui a lista de produtos resgataveis da loja (no maximo 4, checado
+ * na tela). DIFERENCIAL, nao "apaga tudo e recria" (auditoria de 05/10/2026):
+ *  - o produto que continua na lista so tem custo/nome/preco atualizados, entao o
+ *    `id` dele nao muda -- o ledger e o resgate pendente de um cliente apontam
+ *    para esse id (FK); apagar e recriar quebrava o resgate de quem estava com o
+ *    item no carrinho;
+ *  - se der erro no meio, os itens antigos continuam la (antes o DELETE ja tinha
+ *    rodado e a loja ficava sem nenhum produto resgatavel).
+ */
+export const saveLoyaltyRewardItems = async (
+    storeId: string,
+    items: { menu_item_id: number; points_cost: number; menu_item_name: string; menu_item_price: number }[]
+): Promise<void> => {
+    const { data: existentes, error: readError } = await supabase
+        .from('loyalty_reward_items')
+        .select('id, menu_item_id')
+        .eq('store_id', storeId);
+    if (readError) throw readError;
+
+    const porProduto = new Map<number, string>();
+    (existentes || []).forEach((e: any) => porProduto.set(Number(e.menu_item_id), e.id));
+
+    // 1. Atualiza quem continua e insere quem e novo.
+    const novos: any[] = [];
+    for (const item of items) {
+        const idExistente = porProduto.get(item.menu_item_id);
+        if (idExistente) {
+            const { error } = await supabase
+                .from('loyalty_reward_items')
+                .update({
+                    points_cost: item.points_cost,
+                    menu_item_name: item.menu_item_name,
+                    menu_item_price: item.menu_item_price,
+                    is_active: true,
+                })
+                .eq('id', idExistente);
+            if (error) throw error;
+        } else {
+            novos.push({ ...item, store_id: storeId, is_active: true });
+        }
+    }
+    if (novos.length > 0) {
+        const { error } = await supabase.from('loyalty_reward_items').insert(novos);
+        if (error) throw error;
+    }
+
+    // 2. So depois de tudo gravado, remove os que sairam da lista.
+    const manter = new Set(items.map(i => i.menu_item_id));
+    const remover = (existentes || []).filter((e: any) => !manter.has(Number(e.menu_item_id))).map((e: any) => e.id);
+    if (remover.length > 0) {
+        const { error } = await supabase.from('loyalty_reward_items').delete().in('id', remover);
+        if (error) throw error;
+    }
+};
+
+// ─── Fidelidade por PONTOS ─────────────────────────────────────────────
+// O EXTRATO (`loyalty_points_ledger`) e a fonte da verdade: o saldo e a soma dele.
+// `customer_loyalty_points` virou so um espelho (cache) mantido em segundo plano.
+// Antes o saldo era lido-e-regravado (atual + pontos): duas operacoes ao mesmo
+// tempo perdiam uma delas para sempre. Somar o extrato nao tem esse problema.
+//
+// CHAVE DO TELEFONE: sempre `canonicalPhone` (DDD + 8 digitos, sem o 9), a MESMA
+// que a tabela `customers` usa. Antes o credito gravava o telefone cru do pedido
+// (11 digitos) e a tela lia com o telefone do cadastro (10 digitos): o cliente via
+// 0 pontos. Por compatibilidade, a leitura tambem enxerga a variante com o 9.
+
+const chavesDeTelefone = (phone: string): { canon: string; variantes: string[] } => {
+    const canon = canonicalPhone(phone);
+    const comNove = `${canon.slice(0, 2)}9${canon.slice(2)}`;
+    return { canon, variantes: [canon, comNove] };
+};
+
+/** Soma bruta do extrato do cliente (pode ser negativa se algo deu errado). */
+const somarExtrato = async (phone: string, storeId: string): Promise<number> => {
+    const { variantes } = chavesDeTelefone(phone);
+    const { data, error } = await supabase
+        .from('loyalty_points_ledger')
+        .select('points')
+        .eq('store_id', storeId)
+        .in('phone', variantes);
+    if (error) throw error;
+    return (data || []).reduce((soma: number, l: any) => soma + (Number(l.points) || 0), 0);
+};
+
+/** Mantem o espelho `customer_loyalty_points` igual ao extrato. Nunca derruba a operacao. */
+const sincronizarSaldo = async (phone: string, storeId: string): Promise<void> => {
+    try {
+        const { canon, variantes } = chavesDeTelefone(phone);
+        const saldo = Math.max(0, await somarExtrato(phone, storeId));
+        const { error } = await supabase
+            .from('customer_loyalty_points')
+            .upsert({
+                store_id: storeId,
+                phone: canon,
+                points_balance: saldo,
+                updated_at: new Date().toISOString(),
+            }, { onConflict: 'store_id,phone' });
+        if (error) console.error('[Fidelidade] erro ao atualizar o espelho do saldo:', error);
+
+        const outras = variantes.filter(v => v !== canon);
+        if (outras.length > 0) {
+            await supabase.from('customer_loyalty_points').delete().eq('store_id', storeId).in('phone', outras);
+        }
+    } catch (e) {
+        console.error('[Fidelidade] erro ao sincronizar o saldo:', e);
+    }
+};
+
+/** Saldo de pontos do cliente nesta loja (soma do extrato, nunca negativo). 0 se nunca teve registro. */
+export const fetchCustomerPointsBalance = async (phone: string, storeId: string): Promise<number> => {
+    const { data, error } = await supabase.rpc('pontos_saldo', { p_store: storeId, p_phone: phone });
+    if (error) throw error;
+    return Math.max(0, Number(data) || 0);
+};
+
+/**
+ * Credita os pontos ganhos por um pedido ja PAGO. So chamar para pedidos
+ * origin WEB/APP (regra fechada com o Icaro: balcao nao soma pontos).
+ * Idempotente: o UNIQUE INDEX em loyalty_points_ledger(order_id) recusa um
+ * segundo "ganho" para o mesmo pedido, entao chamar 2x nao duplica saldo.
+ */
+export const creditarPontosDoPedido = async (
+    orderId: string,
+    _phone: string,
+    _storeId: string,
+    _valorPago: number
+): Promise<void> => {
+    // Os pontos saem do total gravado no pedido, calculados no servidor.
+    const { error } = await supabase.rpc('creditar_pontos_pedido', { p_order: orderId });
+    if (error) throw error;
+};
+
+/**
+ * Estorna os pontos de um pedido CANCELADO -- regra fechada com o Ikarus,
+ * 21/09/2026: "pedido for cancelado a gente retira o ponto". Chamado de
+ * updateOrderStatus ao mudar o status para 'Cancelado'.
+ *
+ * Estorna o que o pedido REALMENTE ganhou (le o lancamento de "ganho" dele):
+ * se o pedido nunca creditou, nao ha o que estornar (antes recalculava pelo
+ * valor e podia tirar pontos de outros pedidos). Idempotente pelo UNIQUE INDEX
+ * (tipo='estorno' + order_id). O saldo nunca fica negativo: se o cliente ja
+ * gastou parte desses pontos, so se estorna o que ainda sobra, sem emprestar
+ * saldo futuro.
+ */
+export const estornarPontosDoPedido = async (
+    orderId: string,
+    phone: string,
+    storeId: string,
+    _valorPago?: number
+): Promise<void> => {
+    const { data: ganho, error: ganhoError } = await supabase
+        .from('loyalty_points_ledger')
+        .select('points')
+        .eq('order_id', orderId)
+        .eq('tipo', 'ganho')
+        .maybeSingle();
+    if (ganhoError) throw ganhoError;
+    if (!ganho || !(Number(ganho.points) > 0)) return;
+
+    const saldoAtual = Math.max(0, await somarExtrato(phone, storeId));
+    const pontosEstorno = Math.min(Number(ganho.points), saldoAtual);
+    if (pontosEstorno <= 0) return;
+
+    const { canon } = chavesDeTelefone(phone);
+    const { error: ledgerError } = await supabase
+        .from('loyalty_points_ledger')
+        .insert({
+            store_id: storeId,
+            phone: canon,
+            tipo: 'estorno',
+            points: -pontosEstorno,
+            order_id: orderId,
+        });
+    if (ledgerError) {
+        if (ledgerError.code === '23505') return; // ja estornado antes, ok
+        throw ledgerError;
+    }
+
+    await sincronizarSaldo(phone, storeId);
+};
+
+/**
+ * Resgata um produto por pontos: registra o debito no extrato e confere o saldo.
+ * Lanca erro se o saldo for insuficiente (checagem no banco, nao so na tela).
+ * `orderId` = pedido que entrega o produto (liga o debito ao pedido, para o
+ * cancelamento poder devolver os pontos -- ver estornarResgateDoPedido).
+ *
+ * Ordem: insere o lancamento e DEPOIS confere a soma; se duas pessoas/abas
+ * resgatarem ao mesmo tempo e o saldo estourar, o lancamento desta chamada e
+ * desfeito e ela falha, em vez de deixar o saldo negativo.
+ */
+export const resgatarPontos = async (
+    phone: string,
+    storeId: string,
+    rewardItemId: string,
+    _pointsCost: number,
+    orderId?: string
+): Promise<void> => {
+    // Custo e saldo sao conferidos no servidor.
+    const { error } = await supabase.rpc('resgatar_pontos_cliente', { p_store: storeId, p_phone: phone, p_reward: rewardItemId, p_order: orderId ?? null });
+    if (error) throw new Error(error.message || 'Nao foi possivel resgatar os pontos.');
+};
+
+/**
+ * Devolve os pontos de um resgate quando o PEDIDO que o entregava e cancelado.
+ * Lancamento proprio ('estorno_resgate', positivo), idempotente por pedido.
+ * Precisa do tipo novo no CHECK do ledger (ver add_loyalty_auditoria_20261005.sql);
+ * sem ele o insert falha e o erro e so registrado.
+ */
+export const estornarResgateDoPedido = async (
+    orderId: string,
+    phone: string,
+    storeId: string
+): Promise<void> => {
+    const { data, error } = await supabase
+        .from('loyalty_points_ledger')
+        .select('tipo, points')
+        .eq('order_id', orderId)
+        .in('tipo', ['resgate', 'estorno_resgate']);
+    if (error) throw error;
+
+    const resgate = (data || []).find((l: any) => l.tipo === 'resgate');
+    const jaDevolvido = (data || []).some((l: any) => l.tipo === 'estorno_resgate');
+    if (!resgate || jaDevolvido) return;
+
+    const pontos = Math.abs(Number(resgate.points));
+    if (!(pontos > 0)) return;
+
+    const { canon } = chavesDeTelefone(phone);
+    const { error: ledgerError } = await supabase
+        .from('loyalty_points_ledger')
+        .insert({
+            store_id: storeId,
+            phone: canon,
+            tipo: 'estorno_resgate',
+            points: pontos,
+            order_id: orderId,
+        });
+    if (ledgerError) {
+        if (ledgerError.code === '23505') return;
+        throw ledgerError;
+    }
+
+    await sincronizarSaldo(phone, storeId);
+};
+
+/**
+ * O resgate pendente so vale se o produto resgatado AINDA esta no pedido a preco 0
+ * (o cliente pode ter tirado o item do carrinho depois de resgatar). Desconto
+ * sempre vale. Evita debitar pontos/selos por um item que nao foi entregue.
+ */
+export const resgateEfetivo = (pendingReward: any, items: any[]): any => {
+    if (!pendingReward) return null;
+    if (pendingReward.type !== 'item') return pendingReward;
+    const noPedido = (items || []).some((i: any) => i && i.id === pendingReward.item?.id && Number(i.price) === 0);
+    return noPedido ? pendingReward : null;
+};
+
+/**
+ * Resgate de PONTOS em andamento (item no carrinho a preco 0): confere o saldo ANTES
+ * de criar o pedido. Os pontos so saem de verdade ao fechar o pedido
+ * (concluirResgateDoPedido) -- antes eram debitados no clique e se o cliente
+ * desistisse/recarregasse a pagina, perdia os pontos sem receber o produto.
+ */
+export const verificarResgatePendente = async (
+    pendingReward: any,
+    phone: string,
+    storeId: string
+): Promise<void> => {
+    if (!pendingReward || pendingReward.type !== 'item' || !pendingReward.pointsCost) return;
+    const saldo = await fetchCustomerPointsBalance(phone, storeId);
+    if (saldo < pendingReward.pointsCost) {
+        throw new Error(`Seus pontos mudaram e agora o saldo (${saldo}) nao cobre este resgate (${pendingReward.pointsCost} pontos). Remova o item resgatado do carrinho ou use outro.`);
+    }
+};
+
+/**
+ * Depois que o pedido foi criado: modelo de PONTOS debita os pontos ligando ao pedido;
+ * modelo de SELO mantem o comportamento antigo (consome 10 selos). So um dos dois roda --
+ * antes o resgate por pontos tambem chamava o resgate de selos por engano.
+ */
+export const concluirResgateDoPedido = async (params: {
+    pendingReward: any;
+    descontoAplicado: number;
+    phone: string;
+    storeId: string;
+    orderId: string;
+}): Promise<void> => {
+    const { pendingReward, descontoAplicado, phone, storeId, orderId } = params;
+    if (pendingReward?.type === 'item' && pendingReward.pointsCost) {
+        await resgatarPontos(phone, storeId, pendingReward.rewardItemId, pendingReward.pointsCost, orderId);
+        return;
+    }
+    if (descontoAplicado > 0 || (pendingReward && pendingReward.type === 'item')) {
+        await redeemLoyaltyReward(phone, storeId);
+    }
+};
+
+// Sessao do garcom (PIN da loja validado no servidor). Enquanto a tela do garcom esta aberta, as funcoes de
+// pedido abaixo passam pelas funcoes do servidor em vez de ler/gravar a tabela direto.
+let sessaoGarcom: { storeId: string; token: string } | null = null;
+export const definirSessaoGarcom = (s: { storeId: string; token: string } | null) => { sessaoGarcom = s; };
+export const garcomLogin = async (storeId: string, pin: string): Promise<string> => {
+    const { data, error } = await supabase.rpc('garcom_login', { p_store: storeId, p_pin: pin });
+    if (error) throw error;
+    if (!data?.ok) throw new Error(data?.erro || 'PIN Incorreto');
+    return data.token as string;
+};
+const dosGarcom = (storeId?: string) => (sessaoGarcom && (!storeId || storeId === sessaoGarcom.storeId)) ? sessaoGarcom : null;
+
+export const createOrder = async (order: any) => {
+    const dbOrder = mapOrderToDB(order);
+    
+    // Initialize status history for new orders if not present
+    if (!dbOrder.status_history) {
+        dbOrder.status_history = [{ 
+            status: order.status || 'Novo', 
+            timestamp: new Date().toISOString() 
+        }];
+    }
+
+    // Pedido do site/app: o servidor confere loja, preco, frete e total (SQL 5). Se a funcao ainda nao
+    // existir no banco, segue o caminho antigo para o site nao parar.
+    let data: any;
+    const doSite = dbOrder.origin === 'WEB' || dbOrder.origin === 'APP';
+    const garcom = !doSite ? dosGarcom(dbOrder.store_id) : null;
+    if (garcom) {
+        const { id: _semId, store_id: _semLoja, ...corpo } = dbOrder;
+        const r = await supabase.rpc('garcom_gravar_pedido', { p_store: garcom.storeId, p_token: garcom.token, p_id: null, p: corpo });
+        if (r.error) throw new Error(r.error.message);
+        data = r.data;
+    } else if (doSite) {
+        const r = await supabase.rpc('criar_pedido_publico', { p: dbOrder });
+        if (!r.error) data = r.data;
+        else if (r.error.code === 'PGRST202' || r.error.code === '42883') data = null;
+        else throw new Error(r.error.message || 'Não foi possível criar o pedido.');
+    }
+    if (!data) {
+        const { data: linha, error } = await supabase
+            .from('orders')
+            .insert(dbOrder)
+            .select(ORDER_COLUMNS)
+            .single();
+        if (error) throw error;
+        data = linha;
+    }
+
+    const frontendOrder = mapOrderFromDB(data);
+
+    // Trigger Webhook for New Order (Non-blocking)
+    if (order.store_id) {
+        fetchPublicSettings(order.store_id).then(settings => {
+            if (settings.webhookNewOrderUrl) {
+                triggerWebhook(settings.webhookNewOrderUrl, {
+                    ...frontendOrder,
+                    customer_phone: frontendOrder.phone,
+                    phone: frontendOrder.phone
+                }).catch(e => console.error("Error triggering new order webhook:", e));
+            }
+
+            // Fidelidade por pontos: so quando o modelo estiver ativo, so
+            // pedidos do site/app (nao balcao), e nunca bloqueando a venda
+            // se der erro -- fidelidade e bonus, nao pode derrubar pedido.
+            const ehDoSite = frontendOrder.origin === 'WEB' || frontendOrder.origin === 'APP';
+            if (settings.loyaltyModel === 'pontos' && ehDoSite && frontendOrder.phone && frontendOrder.id) {
+                creditarPontosDoPedido(frontendOrder.id, frontendOrder.phone, order.store_id, frontendOrder.total)
+                    .catch(e => console.error("Error crediting loyalty points:", e));
+            }
+        }).catch(e => console.error("Error fetching settings for webhook:", e));
+
+        // NFC-e (Fase 2, 28/09/2026): so tenta se a loja tiver fiscal_config
+        // com emissao habilitada (ambiente configurado + provedor escolhido).
+        // NUNCA bloqueia a venda -- se a Sefaz/API fiscal falhar, a nota fica
+        // 'pendente'/'contingencia' no banco e o pedido segue normal. Regra
+        // de ouro (skill nfce, item 7): grava ANTES de chamar a API.
+        dispararEmissaoNotaFiscal(frontendOrder, order.store_id).catch(e =>
+            console.error('[NFC-e] Erro ao disparar emissao (pedido segue normal):', e)
+        );
+    }
+
+    return frontendOrder;
+};
+
+/**
+ * Dispara a emissao de NFC-e para um pedido recem-criado. So age se a loja
+ * tiver `fiscal_config` cadastrada E `provedor_api` preenchido (plug-and-play
+ * por loja -- ver claude-acai.md, cada cliente/copia do app configura o seu).
+ * Sem provedor contratado, fica tudo pendente sem nenhuma chamada externa.
+ */
+const FORMAS_PAGAMENTO_COM_NOTA: string[] = ['PIX', 'Cartão', 'Cartao'];
+
+// exportada (15/10/2026): o sincronizador do Balcão V2 offline dispara a nota quando a venda SOBE.
+export const dispararEmissaoNotaFiscal = async (order: Order, storeId: string): Promise<void> => {
+    const config = await fetchFiscalConfig(storeId);
+    if (!config || !config.provedor_api) {
+        // Sem config fiscal ou sem provedor escolhido ainda: nao e' erro,
+        // e' o estado normal enquanto a Fase 2 nao foi ligada para esta loja.
+        return;
+    }
+
+    // Decisao do Marlon (contador a confirmar): so PIX e cartao emitem NFC-e;
+    // dinheiro fica sem nota. Filtra ANTES de gravar a nota como pendente, pra
+    // nao deixar registro 'pendente' de venda que nunca vai ser emitida.
+    if (!FORMAS_PAGAMENTO_COM_NOTA.includes(order.paymentMethod as string)) {
+        return;
+    }
+
+    // Repassa para a rotina compartilhada -- mesma usada pelo botao manual
+    // da tela Nota Fiscal (emitirNotaFiscalAgora). Erro aqui NUNCA propaga:
+    // o pedido ja foi criado, a venda ja aconteceu.
+    try {
+        await emitirNotaFiscalAgora(storeId, order.total, order.id, config);
+    } catch (e) {
+        console.error('[NFC-e] Falha ao disparar emissao automatica (nota fica pendente):', e);
+    }
+};
+
+/**
+ * Emite (tenta emitir) uma NFC-e -- rotina compartilhada entre o gatilho
+ * automatico do checkout (`dispararEmissaoNotaFiscal`, silencioso) e o
+ * botao manual "Gerar Nota Fiscal (teste)" da tela Admin (`FiscalTab.tsx`,
+ * que PRECISA do resultado para mostrar sucesso/erro ao Ikarus).
+ * `orderId` e' opcional -- o botao manual nao tem pedido real, gera uma
+ * nota AVULSA so para validar a integracao (chave `order_id` fica NULL).
+ *
+ * Botao existe e chama isto de verdade mesmo sem provedor contratado --
+ * pedido explicito do Ikarus (28/09/2026): "deixa o botao pronto... eu sei
+ * muito bem que ele nao vai funcionar" ainda. Sem provedor, a Edge Function
+ * responde com resultado.sucesso=false e motivo explicito -- nao e' erro
+ * de bug, e' o estado real do sistema.
+ */
+export const emitirNotaFiscalAgora = async (
+    storeId: string,
+    valorTotal: number,
+    orderId?: string,
+    configJaCarregada?: FiscalConfig | null
+): Promise<{ nota: NotaFiscal; resultado: any }> => {
+    const config = configJaCarregada ?? await fetchFiscalConfig(storeId);
+    if (!config) throw new Error('Configuração fiscal da loja ainda não foi salva.');
+
+    const serie = config.serie_padrao || 1;
+    const numero = await calcularProximoNumeroNota(storeId, serie, config.numero_inicial);
+
+    // Grava como 'pendente' ANTES de qualquer chamada externa (Regra 7 da
+    // skill nfce) -- se a luz cair no meio da chamada, a nota fica
+    // registrada em vez de sumir.
+    const nota = await criarNotaFiscalPendente({
+        storeId,
+        orderId,
+        serie,
+        numero,
+        valorTotal,
+    });
+
+    const { data, error } = await supabase.functions.invoke('emitir-nfce', {
+        body: { notaFiscalId: nota.id, storeId, orderId: orderId || null },
+    });
+    if (error) throw error;
+    return { nota, resultado: data?.resultado };
+};
+
+export const updateOrder = async (orderId: string, updates: any) => {
+    const dbUpdates = mapOrderToDB(updates);
+    const garcom = dosGarcom(updates?.store_id);
+    if (garcom) {
+        const { id: _i, store_id: _s, ...corpo } = dbUpdates;
+        const r = await supabase.rpc('garcom_gravar_pedido', { p_store: garcom.storeId, p_token: garcom.token, p_id: orderId, p: corpo });
+        if (r.error) throw new Error(r.error.message);
+        return r.data ? [mapOrderFromDB(r.data)] : [];
+    }
+    const { data, error } = await supabase
+        .from('orders')
+        .update(dbUpdates)
+        .eq('id', orderId)
+        .select(ORDER_COLUMNS);
+    if (error) throw error;
+    return data ? data.map(mapOrderFromDB) : [];
+};
+
+export const deleteOrder = async (orderId: string) => {
+    const { error } = await supabase
+        .from('orders')
+        .delete()
+        .eq('id', orderId);
+    if (error) throw error;
+    return true;
+};
+
+export const rateOrder = async (orderId: string, rating: number, feedback?: string) => {
+    const { data, error } = await supabase.rpc('avaliar_pedido', { p_id: orderId, p_rating: rating, p_feedback: feedback ?? null });
+    if (error) throw error;
+    return data;
+};
+
+/**
+ * Busca por telefone tolerante a com/sem DDD e com/sem 9o digito -- mas
+ * NUNCA troca o DDD que o cliente digitou (Ikarus, 21/09/2026: "vai ter
+ * gente que vai pedir com telefone de outro estado" -- um cliente de SP com
+ * numero local igual a um de TO nao pode virar o mesmo cadastro).
+ *
+ * Estrategia: gera a chave canonica (`canonicalPhone`, usando o DDD da
+ * propria loja so quando o cliente digitou sem DDD) e busca por ela E pela
+ * variacao com o 9 na frente do local, cobrindo cadastros antigos que podem
+ * ter ficado salvos em qualquer um dos dois formatos antes desta correcao.
+ * Nunca busca so pelo sufixo de 8 digitos (isso juntaria DDDs diferentes).
+ */
+export const fetchCustomerByPhone = async (phone: string, storeId: string, defaultDDD: string = '32'): Promise<Customer | null> => {
+    const canon = canonicalPhone(phone, defaultDDD); // DDD(2) + local(8) = 10 digitos
+    if (canon.length !== 10) return null;
+    const ddd = canon.slice(0, 2);
+    const local8 = canon.slice(2);
+    const comNove = `${ddd}9${local8}`; // formato antigo, possivel em cadastros anteriores
+
+    const { data, error } = await supabase.rpc('cliente_por_telefone', { p_store: storeId, p_phones: [canon, comNove] });
+    if (error) {
+        console.error('Error fetching customer:', error);
+        return null;
+    }
+    return (data as Customer) || null;
+};
+
+export const searchCustomers = async (query: string, storeId: string): Promise<Customer[]> => {
+    // Sanitization for phone search part
+    const sanitizedQuery = query.replace(/\D/g, '');
+    
+    let queryBuilder = supabase
+        .from('customers')
+        .select('*')
+        .eq('store_id', storeId)
+        .limit(10);
+
+    // If query looks like a phone number (mostly digits)
+    if (sanitizedQuery.length > 3) {
+        // Try to match phone OR name
+        queryBuilder = queryBuilder.or(`phone.ilike.%${sanitizedQuery}%,name.ilike.%${query}%`);
+    } else {
+        // Mostly text -> match name OR phone raw (in case of small digits)
+        queryBuilder = queryBuilder.or(`name.ilike.%${query}%,phone.ilike.%${query}%`);
+    }
+
+    const { data, error } = await queryBuilder;
+
+    if (error) {
+        console.error('Error searching customers:', error);
+        return [];
+    }
+    return data || [];
+};
+
+export const fetchLastOrderByPhone = async (phone: string, storeId: string): Promise<Order | null> => {
+    let sanitizedPhone = phone.replace(/\D/g, '');
+    if (sanitizedPhone.startsWith('55') && sanitizedPhone.length > 11) {
+        sanitizedPhone = sanitizedPhone.substring(2);
+    }
+    const { data, error } = await supabase.rpc('ultimo_pedido_por_telefone', { p_store: storeId, p_sufixo: sanitizedPhone });
+    if (error) {
+        console.error('Error fetching last order:', error);
+        return null;
+    }
+    return data ? mapOrderFromDB(data) : null;
+};
+
+const tokenDoLogin = async () => (await supabase.auth.getSession()).data.session?.access_token;
+
+/**
+ * Sobe imagem comprimida (WebP, miniatura para produto) com cache de 1 ano.
+ * Destino: Cloudflare R2 se configurado; senão o bucket `assets` do Supabase.
+ * Devolve null só se a imagem não pôde ser comprimida: aí quem chamou segue com o envio original.
+ */
+const subirImagem = async (file: File, storeId: string, tipo: TipoImagem): Promise<string | null> => {
+    try {
+        if (imagensR2Ativas(storeId)) return await enviarImagem(file, storeId, tipo, tokenDoLogin);
+        return await enviarImagemComprimida(file, storeId, tipo, async (caminho, blob) => {
+            const { error } = await supabase.storage.from('assets').upload(caminho, blob, {
+                upsert: false, cacheControl: '31536000', contentType: 'image/webp',
+            });
+            // Nome = hash do conteúdo: "já existe" significa que é a mesma imagem.
+            if (error && !/already exists|duplicate/i.test(error.message)) throw error;
+            return supabase.storage.from('assets').getPublicUrl(caminho).data.publicUrl;
+        });
+    } catch (e) {
+        if (e instanceof ErroDeCompressao) {
+            console.warn('[imagem] não comprimiu, enviando o arquivo original:', e.message);
+            return null;
+        }
+        throw e;
+    }
+};
+
+// --- Settings Functions ---
+export const uploadLogoToStorage = async (storeId: string, file: File): Promise<string> => {
+    { const url = await subirImagem(file, storeId, 'logo'); if (url) return url; }
+    const fileExt = file.name.split('.').pop();
+    const fileName = `logo_${Date.now()}.${fileExt}`;
+    const filePath = `${storeId}/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+        .from('assets')
+        .upload(filePath, file, { upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage
+        .from('assets')
+        .getPublicUrl(filePath);
+
+    return data.publicUrl;
+};
+
+/** Mesmo mecanismo da logo -- so muda o prefixo do arquivo no bucket. */
+export const uploadHeroImageToStorage = async (storeId: string, file: File): Promise<string> => {
+    { const url = await subirImagem(file, storeId, 'hero'); if (url) return url; }
+    const fileExt = file.name.split('.').pop();
+    const fileName = `hero_${Date.now()}.${fileExt}`;
+    const filePath = `${storeId}/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+        .from('assets')
+        .upload(filePath, file, { upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage
+        .from('assets')
+        .getPublicUrl(filePath);
+
+    return data.publicUrl;
+};
+
+const defaultSettings: Omit<Settings, 'id' | 'store_id'> = {
+    openingTime: '18:00',
+    closingTime: '23:59',
+    manualStatus: 'auto',
+    comboPrice: 13.00,
+    webhookNewOrderUrl: '',
+    webhookInProductionUrl: '',
+    webhookOutForDeliveryUrl: '',
+    webhookArrivedAtDoorUrl: '',
+    isAppDiscountEnabled: false,
+    appDiscountPercentage: 0,
+    logoUrl: '',
+    heroImageUrl: '',
+    loyaltyModel: 'selo',
+    storefrontTheme: 'classic',
+    modernGroups: [
+        { id: 1, name: 'AÇAÍ', image: '', categories: [] },
+        { id: 2, name: 'PORÇÕES', image: '', categories: [] },
+        { id: 3, name: 'BEBIDAS', image: '', categories: [] }
+    ],
+    quickActionProduct: { label: 'Queridinho da Semana', menuItemId: undefined },
+    quickActionAccountLabel: 'Minha Conta',
+    instagramHandle: '',
+    storeAddress: '',
+    isRaffleEnabled: false,
+    rafflePrizeValue: 0,
+    raffleDrawDate: undefined,
+    deliveryFee: 2.00,
+    minOrderValue: 15.00,
+    isBotEnabled: true,
+    // Printer Defaults
+    preferredPrinter: undefined,
+    printerPaperWidth: '80mm',
+    printerCompatibilityMode: false,
+    autoPrintDineIn: true,   // padrao: imprime sozinho (comportamento historico)
+    autoPrintRetirada: true, // padrao: imprime sozinho (independente de Mesa desde 21/09/2026)
+    orderNumberingMode: 'diario', // padrao: reinicia sozinho toda meia-noite (comportamento historico)
+    sireneTipo: 'sino',
+    sireneVolume: 3,
+    mostrarDicasAtalho: true,
+    modeloMesas: 'padrao',
+    balcaoV2: false,
+    pixEnabled: false,
+    pixKey: '',
+    pixKeyType: 'CNPJ',
+    pixBeneficiary: '',
+    storeWhatsapp: '',
+    pixResumoTemplate: '',
+    kitchenPrinter: undefined,
+    kitchenPrinterPaperWidth: '80mm',
+    barPrinter: undefined,
+    barPrinterPaperWidth: '80mm',
+    courierPrinter: undefined,
+    courierPrinterPaperWidth: '80mm',
+    isScaleEnabled: false,
+    scaleProtocol: 'urano',
+    scaleBaudRate: 9600,
+    scalePricePerKg: 60.00,
+    scaleAutoAdd: false,
+    courier_access_code: undefined,
+    defaultDDD: '81',
+    daysOfWeek: ['0', '1', '2', '3', '4', '5', '6'], // All days by default
+    isRatingEnabled: true
+};
+
+
+const mapSettingsDBToApp = (dbData: any, storeData?: any): Settings => {
+    const fullData = {
+        ...defaultSettings,
+        ...(dbData || {}),
+        logoUrl: storeData?.logo_url || dbData?.logo_url || dbData?.logoUrl,
+        heroImageUrl: dbData?.hero_image_url ?? dbData?.heroImageUrl ?? defaultSettings.heroImageUrl,
+        loyaltyModel: dbData?.loyalty_model ?? dbData?.loyaltyModel ?? defaultSettings.loyaltyModel
+    };
+
+    return {
+        ...fullData,
+        // Map snake_case or camelCase DB columns to camelCase app properties
+        storefrontTheme: dbData?.storefront_theme ?? dbData?.storefrontTheme ?? defaultSettings.storefrontTheme,
+        modernGroups: dbData?.modern_groups ?? dbData?.modernGroups ?? defaultSettings.modernGroups,
+        quickActionProduct: dbData?.quick_action_product ?? dbData?.quickActionProduct ?? defaultSettings.quickActionProduct,
+        quickActionAccountLabel: dbData?.quick_action_account_label ?? dbData?.quickActionAccountLabel ?? defaultSettings.quickActionAccountLabel,
+        instagramHandle: dbData?.instagram_handle ?? dbData?.instagramHandle ?? defaultSettings.instagramHandle,
+        storeAddress: dbData?.store_address ?? dbData?.storeAddress ?? defaultSettings.storeAddress,
+        openingTime: dbData?.opening_time ?? dbData?.openingTime ?? defaultSettings.openingTime,
+        closingTime: dbData?.closing_time ?? dbData?.closingTime ?? defaultSettings.closingTime,
+        customHoursPerDay: dbData?.custom_hours_per_day ?? dbData?.customHoursPerDay,
+        manualStatus: dbData?.manual_status ?? dbData?.manualStatus ?? defaultSettings.manualStatus,
+        comboPrice: Number(dbData?.combo_price ?? dbData?.comboPrice ?? defaultSettings.comboPrice) || 13.0,
+        deliveryFee: Number(dbData?.delivery_fee ?? dbData?.deliveryFee ?? defaultSettings.deliveryFee) || 0,
+        minOrderValue: Number(dbData?.min_order_value ?? dbData?.minOrderValue ?? defaultSettings.minOrderValue) || 15.0,
+        
+        isRaffleEnabled: dbData?.is_raffle_enabled ?? dbData?.isRaffleEnabled ?? defaultSettings.isRaffleEnabled,
+        raffleDrawDate: dbData?.raffle_draw_date ?? dbData?.raffleDrawDate ?? defaultSettings.raffleDrawDate,
+        rafflePrizeValue: Number(dbData?.raffle_prize_value ?? dbData?.rafflePrizeValue ?? defaultSettings.rafflePrizeValue) || 0,
+        lastRaffleWinner: dbData?.last_raffle_winner ?? dbData?.lastRaffleWinner ?? defaultSettings.lastRaffleWinner,
+        isRatingEnabled: dbData?.is_rating_enabled ?? dbData?.isRatingEnabled ?? defaultSettings.isRatingEnabled,
+        
+        defaultDDD: dbData?.default_ddd ?? dbData?.defaultDDD ?? defaultSettings.defaultDDD,
+        isBotEnabled: dbData?.is_bot_enabled ?? dbData?.isBotEnabled ?? defaultSettings.isBotEnabled,
+        
+        webhookNewOrderUrl: dbData?.webhook_new_order_url ?? dbData?.webhookNewOrderUrl ?? defaultSettings.webhookNewOrderUrl,
+        webhookInProductionUrl: dbData?.webhook_in_production_url ?? dbData?.webhookInProductionUrl ?? defaultSettings.webhookInProductionUrl,
+        webhookOutForDeliveryUrl: dbData?.webhook_out_for_delivery_url ?? dbData?.webhookOutForDeliveryUrl ?? defaultSettings.webhookOutForDeliveryUrl,
+        webhookArrivedAtDoorUrl: dbData?.webhook_arrived_at_door_url ?? dbData?.webhookArrivedAtDoorUrl ?? defaultSettings.webhookArrivedAtDoorUrl,
+
+        isAppDiscountEnabled: dbData?.is_app_discount_enabled ?? dbData?.isAppDiscountEnabled ?? defaultSettings.isAppDiscountEnabled,
+        appDiscountPercentage: Number(dbData?.app_discount_percentage ?? dbData?.appDiscountPercentage ?? defaultSettings.appDiscountPercentage) || 0,
+
+        printerCompatibilityMode: dbData?.printer_compatibility_mode ?? dbData?.printerCompatibilityMode ?? defaultSettings.printerCompatibilityMode,
+        autoPrintDineIn: dbData?.auto_print_dine_in ?? dbData?.autoPrintDineIn ?? defaultSettings.autoPrintDineIn,
+        autoPrintRetirada: dbData?.auto_print_retirada ?? dbData?.autoPrintRetirada ?? defaultSettings.autoPrintRetirada,
+        sireneTipo: dbData?.sirene_tipo ?? dbData?.sireneTipo ?? defaultSettings.sireneTipo,
+        sireneVolume: Number(dbData?.sirene_volume ?? dbData?.sireneVolume ?? defaultSettings.sireneVolume),
+        mostrarDicasAtalho: dbData?.mostrar_dicas_atalho ?? dbData?.mostrarDicasAtalho ?? defaultSettings.mostrarDicasAtalho,
+        modeloMesas: dbData?.modelo_mesas ?? dbData?.modeloMesas ?? defaultSettings.modeloMesas,
+        balcaoV2: dbData?.balcao_v2 ?? dbData?.balcaoV2 ?? defaultSettings.balcaoV2,
+        orderNumberingMode: dbData?.order_numbering_mode ?? dbData?.orderNumberingMode ?? defaultSettings.orderNumberingMode,
+        orderNumberingResetAt: dbData?.order_numbering_reset_at ?? dbData?.orderNumberingResetAt,
+        pixEnabled: dbData?.pix_enabled ?? dbData?.pixEnabled ?? defaultSettings.pixEnabled,
+        pixKey: dbData?.pix_key ?? dbData?.pixKey ?? defaultSettings.pixKey,
+        pixKeyType: dbData?.pix_key_type ?? dbData?.pixKeyType ?? defaultSettings.pixKeyType,
+        pixBeneficiary: dbData?.pix_beneficiary ?? dbData?.pixBeneficiary ?? defaultSettings.pixBeneficiary,
+        storeWhatsapp: dbData?.store_whatsapp ?? dbData?.storeWhatsapp ?? defaultSettings.storeWhatsapp,
+        pixResumoTemplate: dbData?.pix_resumo_template ?? dbData?.pixResumoTemplate ?? defaultSettings.pixResumoTemplate,
+        kitchenPrinter: dbData?.kitchen_printer ?? dbData?.kitchenPrinter ?? defaultSettings.kitchenPrinter,
+        kitchenPrinterPaperWidth: dbData?.kitchen_printer_paper_width ?? dbData?.kitchenPrinterPaperWidth ?? defaultSettings.kitchenPrinterPaperWidth,
+        barPrinter: dbData?.bar_printer ?? dbData?.barPrinter ?? defaultSettings.barPrinter,
+        barPrinterPaperWidth: dbData?.bar_printer_paper_width ?? dbData?.barPrinterPaperWidth ?? defaultSettings.barPrinterPaperWidth,
+        courierPrinter: dbData?.courier_printer ?? dbData?.courierPrinter ?? defaultSettings.courierPrinter,
+        courierPrinterPaperWidth: dbData?.courier_printer_paper_width ?? dbData?.courierPrinterPaperWidth ?? defaultSettings.courierPrinterPaperWidth,
+        preferredPrinter: dbData?.preferred_printer ?? dbData?.preferredPrinter ?? defaultSettings.preferredPrinter,
+        printerPaperWidth: dbData?.printer_paper_width ?? dbData?.printerPaperWidth ?? defaultSettings.printerPaperWidth,
+        courier_access_code: dbData?.courier_access_code ?? dbData?.courierAccessCode ?? defaultSettings.courier_access_code,
+        bolaoStartTime: dbData?.bolao_start_time ?? dbData?.bolaoStartTime,
+        bolaoEndTime: dbData?.bolao_end_time ?? dbData?.bolaoEndTime,
+
+        isScaleEnabled: (() => {
+            if (dbData?.is_scale_enabled !== undefined) return dbData.is_scale_enabled;
+            if (dbData?.isScaleEnabled !== undefined) return dbData.isScaleEnabled;
+            try {
+                const local = localStorage.getItem('acai_scale_settings');
+                if (local) return JSON.parse(local).isScaleEnabled ?? false;
+            } catch(e){}
+            return false;
+        })(),
+        scaleProtocol: dbData?.scale_protocol ?? dbData?.scaleProtocol ?? (() => {
+            try { return JSON.parse(localStorage.getItem('acai_scale_settings') || '{}').scaleProtocol || 'urano'; } catch(e){ return 'urano'; }
+        })(),
+        scaleBaudRate: Number(dbData?.scale_baud_rate ?? dbData?.scaleBaudRate) || (() => {
+            try { return Number(JSON.parse(localStorage.getItem('acai_scale_settings') || '{}').scaleBaudRate) || 9600; } catch(e){ return 9600; }
+        })(),
+        scalePricePerKg: Number(dbData?.scale_price_per_kg ?? dbData?.scalePricePerKg) || (() => {
+            try { return Number(JSON.parse(localStorage.getItem('acai_scale_settings') || '{}').scalePricePerKg) || 60; } catch(e){ return 60; }
+        })(),
+        scaleAutoAdd: dbData?.scale_auto_add ?? dbData?.scaleAutoAdd ?? (() => {
+            try { return JSON.parse(localStorage.getItem('acai_scale_settings') || '{}').scaleAutoAdd ?? false; } catch(e){ return false; }
+        })(),
+        
+        daysOfWeek: (() => {
+            const val = dbData?.days_of_week ?? dbData?.daysOfWeek ?? defaultSettings.daysOfWeek;
+            if (typeof val === 'string') {
+                try {
+                    return JSON.parse(val);
+                } catch (e) {
+                    return val.split(',').map((s: string) => s.trim());
+                }
+            }
+            return Array.isArray(val) ? val : defaultSettings.daysOfWeek;
+        })()
+    } as Settings;
+};
+
+
+export const fetchSettings = async (storeId: string): Promise<Settings> => {
+    const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .eq('store_id', storeId)
+        .single();
+
+    let settingsData = data;
+
+    if (error && error.code === 'PGRST116') {
+        const { logoUrl, ...settingsToInsert } = defaultSettings;
+        const { data: newSettings, error: insertError } = await supabase
+            .from('settings')
+            .insert({ store_id: storeId, ...settingsToInsert })
+            .select()
+            .single();
+        if (insertError) throw insertError;
+        settingsData = newSettings;
+    } else if (error) {
+        throw error;
+    }
+
+    // Fetch logo from store
+    const { data: storeData } = await supabase
+        .from('stores')
+        .select('logo_url')
+        .eq('id', storeId)
+        .single();
+
+    const result = mapSettingsDBToApp(settingsData, storeData);
+    // O codigo de cadastro de entregador fica numa tabela so do dono (a settings e de leitura publica).
+    try {
+        const { data: equipe } = await supabase.from('loja_equipe').select('courier_access_code, garcom_pin').eq('store_id', storeId).maybeSingle();
+        (result as any).courier_access_code = equipe?.courier_access_code || undefined;
+        (result as any).garcom_pin = equipe?.garcom_pin || undefined;
+    } catch { /* sem a tabela ainda: segue sem o codigo */ }
+    return result;
+};
+
+export const fetchPublicSettings = async (storeId: string): Promise<Pick<Settings, 'modernGroups' | 'quickActionProduct' | 'quickActionAccountLabel' | 'instagramHandle' | 'storeAddress' | 'storefrontTheme' | 'openingTime' | 'closingTime' | 'manualStatus' | 'comboPrice' | 'webhookNewOrderUrl' | 'webhookInProductionUrl' | 'webhookOutForDeliveryUrl' | 'webhookArrivedAtDoorUrl' | 'isAppDiscountEnabled' | 'appDiscountPercentage' | 'logoUrl' | 'heroImageUrl' | 'loyaltyModel' | 'isRaffleEnabled' | 'rafflePrizeValue' | 'raffleDrawDate' | 'lastRaffleWinner' | 'isRatingEnabled' | 'deliveryFee' | 'courier_access_code' | 'defaultDDD' | 'isBotEnabled' | 'printerCompatibilityMode' | 'kitchenPrinter' | 'kitchenPrinterPaperWidth' | 'barPrinter' | 'barPrinterPaperWidth' | 'courierPrinter' | 'courierPrinterPaperWidth'>> => {
+    const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .eq('store_id', storeId)
+        .single();
+
+    if (error && error.code === 'PGRST116') {
+        return defaultSettings as Settings;
+    }
+    if (error) throw error;
+
+    // Fetch logo from store
+    const { data: storeData } = await supabase
+        .from('stores')
+        .select('logo_url')
+        .eq('id', storeId)
+        .single();
+
+    const result = mapSettingsDBToApp(data, storeData);
+    return result as any; 
+};
+
+/**
+ * Zera manualmente a numeracao de pedidos (#1, #2...) -- so' faz sentido
+ * quando `orderNumberingMode = 'mensal'` (no modo 'diario' o numero ja
+ * zera sozinho toda meia-noite, esse botao seria redundante). Atualiza
+ * `orderNumberingResetAt` para AGORA -- o trigger do banco
+ * (`set_daily_order_number`) passa a contar so' pedidos criados DEPOIS
+ * deste instante, ao inves de reiniciar por data. Ver
+ * `add_order_numbering_mode.sql`.
+ */
+export const zerarNumeracaoPedidos = async (storeId: string): Promise<void> => {
+    const { error } = await supabase
+        .from('settings')
+        .update({ order_numbering_reset_at: new Date().toISOString() })
+        .eq('store_id', storeId);
+    if (error) throw error;
+};
+
+export const updateSettings = async (storeId: string, settings: Partial<Omit<Settings, 'id'>>) => {
+    if (settings.logoUrl !== undefined) {
+        await supabase.from('stores').update({ logo_url: settings.logoUrl }).eq('id', storeId);
+    }
+
+    if (settings.courier_access_code !== undefined || (settings as any).garcom_pin !== undefined) {
+        const linhaEquipe: any = { store_id: storeId };
+        if (settings.courier_access_code !== undefined) linhaEquipe.courier_access_code = settings.courier_access_code || null;
+        if ((settings as any).garcom_pin !== undefined) linhaEquipe.garcom_pin = (settings as any).garcom_pin || null;
+        const { error: erroEquipe } = await supabase.from('loja_equipe').upsert(linhaEquipe, { onConflict: 'store_id' });
+        if (erroEquipe) throw erroEquipe;
+    }
+
+    const dbSettings: any = {};
+    
+    // Preparation: We will attempt to update both snake_case and camelCase
+    // because the database schema currently has a mix of both.
+    
+    // Core fields
+    if (settings.storefrontTheme !== undefined) {
+        dbSettings.storefront_theme = settings.storefrontTheme;
+    }
+    if (settings.modernGroups !== undefined) {
+        dbSettings.modern_groups = settings.modernGroups;
+    }
+    if (settings.quickActionProduct !== undefined) {
+        dbSettings.quick_action_product = settings.quickActionProduct;
+    }
+    if (settings.quickActionAccountLabel !== undefined) {
+        dbSettings.quick_action_account_label = settings.quickActionAccountLabel;
+    }
+    if (settings.instagramHandle !== undefined) {
+        dbSettings.instagram_handle = settings.instagramHandle;
+    }
+    if (settings.storeAddress !== undefined) {
+        dbSettings.store_address = settings.storeAddress;
+    }
+    if (settings.openingTime !== undefined) {
+        dbSettings.opening_time = settings.openingTime;
+    }
+    if (settings.closingTime !== undefined) {
+        dbSettings.closing_time = settings.closingTime;
+    }
+    if (settings.manualStatus !== undefined) {
+        dbSettings.manual_status = settings.manualStatus;
+    }
+    if (settings.comboPrice !== undefined) {
+        dbSettings.combo_price = settings.comboPrice;
+    }
+    if (settings.deliveryFee !== undefined) {
+        dbSettings.delivery_fee = settings.deliveryFee;
+    }
+    if (settings.minOrderValue !== undefined) {
+        dbSettings.min_order_value = settings.minOrderValue;
+        dbSettings.minOrderValue = settings.minOrderValue;
+    }
+    if (settings.daysOfWeek !== undefined) {
+        dbSettings.days_of_week = settings.daysOfWeek;
+    }
+    if (settings.customHoursPerDay !== undefined) {
+        dbSettings.custom_hours_per_day = settings.customHoursPerDay;
+    }
+
+    // Webhooks
+    if (settings.webhookNewOrderUrl !== undefined) {
+        dbSettings.webhook_new_order_url = settings.webhookNewOrderUrl;
+    }
+    if (settings.webhookInProductionUrl !== undefined) {
+        dbSettings.webhook_in_production_url = settings.webhookInProductionUrl;
+    }
+    if (settings.webhookOutForDeliveryUrl !== undefined) {
+        dbSettings.webhook_out_for_delivery_url = settings.webhookOutForDeliveryUrl;
+    }
+    if (settings.webhookArrivedAtDoorUrl !== undefined) {
+        dbSettings.webhook_arrived_at_door_url = settings.webhookArrivedAtDoorUrl;
+    }
+
+    // App/Fidelity
+    if (settings.isAppDiscountEnabled !== undefined) {
+        dbSettings.is_app_discount_enabled = settings.isAppDiscountEnabled;
+    }
+    if (settings.appDiscountPercentage !== undefined) {
+        dbSettings.app_discount_percentage = settings.appDiscountPercentage;
+    }
+    if (settings.isRatingEnabled !== undefined) {
+        dbSettings.is_rating_enabled = settings.isRatingEnabled;
+    }
+    if (settings.isBotEnabled !== undefined) {
+        dbSettings.is_bot_enabled = settings.isBotEnabled;
+    }
+
+    // Raffle
+    if (settings.isRaffleEnabled !== undefined) {
+        dbSettings.is_raffle_enabled = settings.isRaffleEnabled;
+    }
+    if (settings.rafflePrizeValue !== undefined) {
+        dbSettings.raffle_prize_value = settings.rafflePrizeValue;
+    }
+    if (settings.raffleDrawDate !== undefined) {
+        dbSettings.raffle_draw_date = settings.raffleDrawDate;
+    }
+    if (settings.lastRaffleWinner !== undefined) {
+        dbSettings.last_raffle_winner = settings.lastRaffleWinner;
+    }
+    if (settings.bolaoStartTime !== undefined) {
+        dbSettings.bolao_start_time = settings.bolaoStartTime;
+    }
+    if (settings.bolaoEndTime !== undefined) {
+        dbSettings.bolao_end_time = settings.bolaoEndTime;
+    }
+
+    // Scale Settings
+    if (settings.isScaleEnabled !== undefined) {
+        dbSettings.is_scale_enabled = settings.isScaleEnabled;
+        dbSettings.isScaleEnabled = settings.isScaleEnabled;
+    }
+    if (settings.scaleProtocol !== undefined) {
+        dbSettings.scale_protocol = settings.scaleProtocol;
+        dbSettings.scaleProtocol = settings.scaleProtocol;
+    }
+    if (settings.scaleBaudRate !== undefined) {
+        dbSettings.scale_baud_rate = settings.scaleBaudRate;
+        dbSettings.scaleBaudRate = settings.scaleBaudRate;
+    }
+    if (settings.scalePricePerKg !== undefined) {
+        dbSettings.scale_price_per_kg = settings.scalePricePerKg;
+        dbSettings.scalePricePerKg = settings.scalePricePerKg;
+    }
+    if (settings.scaleAutoAdd !== undefined) {
+        dbSettings.scale_auto_add = settings.scaleAutoAdd;
+        dbSettings.scaleAutoAdd = settings.scaleAutoAdd;
+    }
+
+    try {
+        const currentLocal = JSON.parse(localStorage.getItem('acai_scale_settings') || '{}');
+        const updatedLocal = {
+            ...currentLocal,
+            ...(settings.isScaleEnabled !== undefined && { isScaleEnabled: settings.isScaleEnabled }),
+            ...(settings.scaleProtocol !== undefined && { scaleProtocol: settings.scaleProtocol }),
+            ...(settings.scaleBaudRate !== undefined && { scaleBaudRate: settings.scaleBaudRate }),
+            ...(settings.scalePricePerKg !== undefined && { scalePricePerKg: settings.scalePricePerKg }),
+            ...(settings.scaleAutoAdd !== undefined && { scaleAutoAdd: settings.scaleAutoAdd })
+        };
+        localStorage.setItem('acai_scale_settings', JSON.stringify(updatedLocal));
+    } catch (e) {}
+
+    // Printers
+    const printerFields = [
+        'kitchenPrinter', 'kitchenPrinterPaperWidth',
+        'barPrinter', 'barPrinterPaperWidth',
+        'courierPrinter', 'courierPrinterPaperWidth',
+        'preferredPrinter', 'printerPaperWidth',
+        'printerCompatibilityMode',
+        'autoPrintDineIn', 'autoPrintRetirada', 'orderNumberingMode', 'orderNumberingResetAt',
+        'sireneTipo', 'sireneVolume', 'mostrarDicasAtalho', 'modeloMesas', 'balcaoV2', 'heroImageUrl', 'loyaltyModel',
+        'pixEnabled', 'pixKey', 'pixKeyType', 'pixBeneficiary',
+        'storeWhatsapp', 'pixResumoTemplate'
+    ];
+
+    printerFields.forEach(field => {
+        if ((settings as any)[field] !== undefined) {
+            const snakeKey = field.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+            const val = (settings as any)[field];
+            dbSettings[snakeKey] = val === "" ? null : val;
+        }
+    });
+
+    try {
+        // Try to update with all fields. Supabase/PostgREST will error if ANY column is missing.
+        const { data, error } = await supabase
+            .from('settings')
+            .update(dbSettings)
+            .eq('store_id', storeId)
+            .select();
+
+        if (error) throw error;
+        return mapSettingsDBToApp(data?.[0], { logo_url: settings.logoUrl });
+    } catch (error: any) {
+        console.warn('[updateSettings] Multi-field update failed. Retrying field by field...', error);
+        
+        // Fallback: update field by field. This ensures that only available columns are updated.
+        // This is necessary because of the inconsistent schema (mix of snake_case and camelCase).
+        for (const key of Object.keys(dbSettings)) {
+            try {
+                await supabase
+                    .from('settings')
+                    .update({ [key]: dbSettings[key] })
+                    .eq('store_id', storeId);
+            } catch (e) {
+                // Silently skip columns that don't exist
+            }
+        }
+        
+        // Fetch the final state
+        const { data: finalData } = await supabase
+            .from('settings')
+            .select('*')
+            .eq('store_id', storeId)
+            .single();
+            
+        return mapSettingsDBToApp(finalData, { logo_url: settings.logoUrl });
+    }
+};
+
+
+export const triggerWebhook = async (url: string, payload: any) => {
+    // console.log(`[triggerWebhook] Attempting to trigger webhook: ${url}`, payload);
+    if (!url) {
+        console.warn("[triggerWebhook] No URL provided, skipping.");
+        return;
+    }
+    try {
+        let finalUrl = url;
+        const phone = payload.customer_phone || payload.phone;
+
+        if (phone) {
+            const separator = finalUrl.includes('?') ? '&' : '?';
+            finalUrl = `${finalUrl}${separator}customer_phone=${encodeURIComponent(phone)}`;
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+        await fetch(finalUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            mode: 'no-cors',
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+    } catch (error: any) {
+        if (error.name === 'AbortError') {
+            console.warn(`[Webhook] Request to ${url} timed out or was aborted.`);
+        } else {
+            console.error('Error triggering webhook:', error);
+        }
+    }
+};
+
+// --- Waiter App Services ---
+
+export const fetchOccupiedTables = async (storeId: string): Promise<number[]> => {
+    // Fetches tables that have open orders
+    const { data, error } = await supabase
+        .from('orders')
+        .select('table_number')
+        .eq('store_id', storeId)
+        .neq('status', 'Entregue')
+        .neq('status', 'Cancelado')
+        .not('table_number', 'is', null);
+
+    if (error) {
+        console.error('Error fetching occupied tables:', error);
+        return [];
+    }
+
+    // Extract unique table numbers
+    const tables = new Set(data?.map(o => Number(o.table_number)).filter(n => n > 0));
+    return Array.from(tables);
+};
+
+// --- Financial & Promotion Services ---
+export const fetchAllPromotions = async (storeId: string): Promise<Promotion[]> => {
+    const { data, error } = await supabase
+        .from('promotions')
+        .select('*')
+        .eq('store_id', storeId)
+        .order('name');
+    if (error) throw error;
+    return (data || []).map(mapPromotionFromDB);
+};
+
+export const fetchActivePromotions = async (storeId: string): Promise<Promotion[]> => {
+    const { data, error } = await supabase
+        .from('promotions')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .order('name');
+    if (error) throw error;
+    return (data || []).map(mapPromotionFromDB);
+};
+
+export const createPromotion = async (promotion: Omit<Promotion, 'id'>) => {
+    const payload = mapPromotionToDB(promotion);
+    const { data, error } = await supabase
+        .from('promotions')
+        .insert(payload)
+        .select()
+        .single();
+    if (error) throw error;
+    return mapPromotionFromDB(data);
+};
+
+export const updatePromotion = async (id: string | number, promotion: Partial<Omit<Promotion, 'id'>>) => {
+    const payload = mapPromotionToDB(promotion);
+    const { data, error } = await supabase
+        .from('promotions')
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) throw error;
+    return mapPromotionFromDB(data);
+};
+
+export const deletePromotion = async (id: string | number) => {
+    const { data, error } = await supabase
+        .from('promotions')
+        .delete()
+        .eq('id', id);
+    if (error) throw error;
+    return data;
+};
+
+// --- Cash Flow Functions ---
+
+/**
+ * CRÍTICO (achado pela auditoria de 01/10/2026): a tabela `cash_sessions` no
+ * banco é snake_case (opening_float, closing_float, opening_time,
+ * closing_time -- confirmado via information_schema.columns), mas todo o
+ * código antes lia/escrevia em camelCase direto, sem nenhum mapeamento
+ * (diferente do padrão já usado em `settings`). Na prática isso significa
+ * que `session.openingFloat` sempre veio `undefined` do Supabase, e
+ * `createCashSession`/`updateCashSession` mandavam colunas que não existem
+ * -- uma causa adicional, bem concreta, do caixa nunca bater para o cliente
+ * Marlon (Açaí do Dudu).
+ */
+const mapCashSessionFromDB = (dbData: any): CashSession => ({
+    id: dbData.id,
+    store_id: dbData.store_id,
+    status: dbData.status,
+    openingFloat: Number(dbData.opening_float) || 0,
+    closingFloat: dbData.closing_float !== null && dbData.closing_float !== undefined ? Number(dbData.closing_float) : undefined,
+    openingTime: dbData.opening_time,
+    closingTime: dbData.closing_time,
+    summary: dbData.summary,
+});
+
+const toDbCashSession = (updates: Partial<CashSession>): any => {
+    const db: any = {};
+    if (updates.status !== undefined) db.status = updates.status;
+    if (updates.openingFloat !== undefined) db.opening_float = updates.openingFloat;
+    if (updates.closingFloat !== undefined) db.closing_float = updates.closingFloat;
+    if (updates.openingTime !== undefined) db.opening_time = updates.openingTime;
+    if (updates.closingTime !== undefined) db.closing_time = updates.closingTime;
+    if (updates.summary !== undefined) db.summary = updates.summary;
+    return db;
+};
+
+export const getOpenCashSession = async (storeId: string): Promise<CashSession | null> => {
+    const { data, error } = await supabase
+        .from('cash_sessions')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('status', 'open')
+        .limit(1)
+        .single();
+    if (error && error.code !== 'PGRST116') throw error;
+    return data ? mapCashSessionFromDB(data) : null;
+};
+
+export const createCashSession = async (storeId: string, openingFloat: number): Promise<CashSession> => {
+    const { data, error } = await supabase
+        .from('cash_sessions')
+        .insert({ opening_float: openingFloat, status: 'open', store_id: storeId })
+        .select()
+        .single();
+    if (error) throw error;
+    return mapCashSessionFromDB(data);
+};
+
+export const updateCashSession = async (id: string, updates: Partial<CashSession>): Promise<CashSession> => {
+    const { data, error } = await supabase
+        .from('cash_sessions')
+        .update(toDbCashSession(updates))
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) throw error;
+    return mapCashSessionFromDB(data);
+};
+
+export const createCashTransaction = async (transaction: Omit<CashTransaction, 'id' | 'timestamp'>): Promise<CashTransaction> => {
+    const { data, error } = await supabase
+        .from('cash_transactions')
+        .insert(transaction)
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+};
+
+export const getCashTransactionsForSession = async (sessionId: string): Promise<CashTransaction[]> => {
+    const { data, error } = await supabase
+        .from('cash_transactions')
+        .select('*')
+        .eq('session_id', sessionId);
+
+    if (error) throw error;
+    return data as CashTransaction[];
+};
+
+export const fetchCashSessionsHistory = async (storeId: string): Promise<CashSession[]> => {
+    // CRÍTICO (achado 01/10/2026, feature nova "Histórico de Caixas" pra
+    // demo do Marlon): dois bugs que fariam esta função quebrar OU devolver
+    // dado errado pra tela, sem nunca ter sido usada em lugar nenhum antes:
+    // 1. `.order('closingTime', ...)` usava o nome CAMELCASE -- a coluna real
+    //    é `closing_time` (snake_case), igual todo o resto de cash_sessions.
+    // 2. `data as CashSession[]` fazia cast direto sem passar por
+    //    mapCashSessionFromDB -- a UI ia receber opening_float/closing_time
+    //    em vez de openingFloat/closingTime e tudo apareceria undefined.
+    const { data, error } = await supabase
+        .from('cash_sessions')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('status', 'closed')
+        .order('closing_time', { ascending: false })
+        .limit(30); // Last 30 sessions
+    if (error) throw error;
+    return (data || []).map(mapCashSessionFromDB);
+};
+
+export const fetchOrdersForSession = async (storeId: string, startTime: string, endTime?: string) => {
+    let query = supabase
+        .from('orders')
+        .select('*')
+        .eq('store_id', storeId)
+        .gte('timestamp', startTime);
+
+    if (endTime) {
+        query = query.lte('timestamp', endTime);
+    }
+
+    const { data, error } = await query.order('timestamp', { ascending: true });
+
+    if (error) throw error;
+    return (data || []).map(mapOrderFromDB);
+};
+
+/**
+ * Upload de imagem de produto/anuncio -- migrado de Firebase para Supabase
+ * Storage em 28/09/2026. O Firebase NUNCA esteve configurado neste projeto
+ * (Ikarus confirmou: todas as chaves em `.env.local` vazias,
+ * `isFirebaseConfigured` sempre `false`, `storage` sempre `null`) -- ou
+ * seja, cadastrar um produto NOVO com foto nova sempre falhou em silencio
+ * (o erro so aparecia no console, o modal mostrava "Erro ao salvar item"
+ * generico). As fotos que JA aparecem no cardapio hoje nao passaram por
+ * aqui: vieram no campo `image` junto da migracao do Multipedidos, como
+ * link direto para `images.multipedidos.com.br` (confirmado por Ikarus
+ * colando a URL de uma foto real). Essas continuam funcionando desde que o
+ * Multipedidos continue no ar -- risco a considerar quando ele for
+ * desligado de vez.
+ *
+ * Reaproveita o bucket `assets` (PUBLICO) que `uploadLogoToStorage`/
+ * `uploadHeroImageToStorage` ja usam de verdade neste projeto -- nao cria
+ * bucket novo, so mais um prefixo de arquivo dentro do mesmo.
+ */
+export const uploadMenuImage = async (file: File, storeId: string): Promise<string | null> => {
+    { const url = await subirImagem(file, storeId, 'produto'); if (url) return url; }
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${storeId}/produto_${Date.now()}.${fileExt}`;
+
+    const { error } = await supabase.storage
+        .from('assets')
+        .upload(fileName, file, { upsert: false });
+    if (error) {
+        console.error('Error uploading image to Supabase Storage:', error);
+        throw error;
+    }
+    const { data } = supabase.storage.from('assets').getPublicUrl(fileName);
+    return data.publicUrl;
+};
+
+/**
+ * Logo da loja via upload de arquivo generico (AdsTab/MenuItemModal usam
+ * `uploadMenuImage`; esta funcao ficava sem nenhum chamador ate 28/09/2026
+ * -- SettingsTab.tsx usa `uploadLogoToStorage`, que ja funcionava. Mantida
+ * so por compatibilidade caso algo a importe, migrada ao mesmo bucket.
+ */
+export const uploadStoreLogo = async (file: File, storeId: string): Promise<string | null> => {
+    { const url = await subirImagem(file, storeId, 'logo'); if (url) return url; }
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${storeId}/logo-${Date.now()}.${fileExt}`;
+
+    const { error } = await supabase.storage
+        .from('assets')
+        .upload(fileName, file, { upsert: false });
+    if (error) {
+        console.error('Error uploading logo to Supabase Storage:', error);
+        throw error;
+    }
+    const { data } = supabase.storage.from('assets').getPublicUrl(fileName);
+    return data.publicUrl;
+};
+
+export const fetchStoreBySlug = async (slug: string): Promise<Store | null> => {
+    // console.log(`[supabaseService] fetchStoreBySlug called for slug: ${slug}`);
+    const { data, error } = await supabase
+        .from('stores')
+        .select('*')
+        .eq('slug', slug)
+        .limit(1);
+
+    if (error) {
+        console.error("[supabaseService] Error fetching store by slug:", error);
+        return null;
+    }
+    
+    // console.log("[supabaseService] Supabase raw data:", data);
+    return data && data.length > 0 ? (data[0] as Store) : null;
+};
+
+export const createStore = async (store: Omit<Store, 'id' | 'created_at'>) => {
+    const { data, error } = await supabase
+        .from('stores')
+        .insert(store)
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+};
+
+// --- Condições financeiras das lojas de comissão (tabelas privadas loja_financeiro e plataforma_config) ---
+export type CondicoesFinanceiras = Omit<LojaFinanceiro, 'store_id'>;
+
+/** Cria a loja e, se for de comissão, as condições financeiras dela. Se a segunda parte falhar, desfaz a primeira. */
+export const criarLojaCompleta = async (store: Omit<Store, 'id' | 'created_at'>, financeiro?: Partial<CondicoesFinanceiras>) => {
+    const loja = await createStore(store);
+    if (financeiro) {
+        const { error } = await supabase.from('loja_financeiro').insert({ store_id: loja.id, ...financeiro });
+        if (error) {
+            await supabase.from('stores').delete().eq('id', loja.id);
+            throw error;
+        }
+    }
+    return loja as Store;
+};
+
+/** Condições financeiras de todas as lojas (só o administrador da plataforma vê todas). Tabela ausente: lista vazia. */
+export const fetchFinanceiroDeTodas = async (): Promise<LojaFinanceiro[]> => {
+    const { data, error } = await supabase.from('loja_financeiro').select('*');
+    if (error) { console.warn('[financeiro] não foi possível ler loja_financeiro:', error.message); return []; }
+    return (data || []) as LojaFinanceiro[];
+};
+
+/** Condições da própria loja (o dono lê as dele, para saber quanto paga de comissão). */
+export const fetchMeuFinanceiro = async (storeId: string): Promise<LojaFinanceiro | null> => {
+    const { data, error } = await supabase.from('loja_financeiro').select('*').eq('store_id', storeId).maybeSingle();
+    if (error) return null;
+    return (data as LojaFinanceiro) || null;
+};
+
+// --- Central de gestão (Super Admin): leituras da plataforma inteira. O banco só entrega ao administrador. ---
+export interface PedidoDaPlataforma {
+    id: string; store_id: string; timestamp: string; status: string; total: number; payment_method: string | null;
+    origin: string | null; order_type: string | null; customer_name: string | null; daily_order_number: number | null;
+    cancel_reason: string | null; delivery_fee: number | null;
+}
+
+/** Pedidos de todas as lojas desde uma data (mais recentes primeiro). `cortado` avisa se bateu o limite. */
+export const fetchPedidosDaPlataforma = async (desdeISO: string, limite = 1500): Promise<{ pedidos: PedidoDaPlataforma[]; cortado: boolean }> => {
+    const colunas = 'id,store_id,timestamp,status,total,payment_method,origin,order_type,customer_name,daily_order_number,delivery_fee';
+    let r: any = await supabase.from('orders').select(colunas + ',cancel_reason').gte('timestamp', desdeISO).order('timestamp', { ascending: false }).limit(limite);
+    if (r.error) r = await supabase.from('orders').select(colunas).gte('timestamp', desdeISO).order('timestamp', { ascending: false }).limit(limite); // antes do SQL 4
+    if (r.error) throw r.error;
+    const pedidos = (r.data || []) as PedidoDaPlataforma[];
+    return { pedidos, cortado: pedidos.length >= limite };
+};
+
+export interface SinalDeVidaDaLoja {
+    store_id: string; maquina: string; versao: string | null; ultimo_contato: string;
+    vendas_na_fila: number; valor_na_fila: number; ultima_venda_enviada_em: string | null;
+}
+export const fetchSinaisDeVida = async (): Promise<SinalDeVidaDaLoja[]> => {
+    const { data, error } = await supabase.from('pdv_heartbeat').select('*');
+    if (error) { console.warn('[saude] não foi possível ler pdv_heartbeat:', error.message); return []; }
+    return (data || []) as SinalDeVidaDaLoja[];
+};
+
+/** Quantos itens de cardápio cada loja tem (para saber se a loja está pronta para aparecer no shopping). */
+export const fetchContagemDeCardapio = async (): Promise<Record<string, number>> => {
+    const { data, error } = await supabase.from('menu_items').select('store_id').limit(20000);
+    if (error) return {};
+    const c: Record<string, number> = {};
+    for (const r of (data || []) as { store_id: string }[]) c[r.store_id] = (c[r.store_id] || 0) + 1;
+    return c;
+};
+
+/** Só o administrador da plataforma grava (o banco recusa o resto). */
+export const salvarFinanceiro = async (storeId: string, dados: Partial<CondicoesFinanceiras>) => {
+    const { error } = await supabase.from('loja_financeiro').upsert({ store_id: storeId, ...dados, atualizado_em: new Date().toISOString() }, { onConflict: 'store_id' });
+    if (error) throw error;
+};
+
+/** Padrões copiados para cada loja de comissão nova. `null` = tabela ainda não existe (SQL 4 não rodado). */
+export const fetchPadroesPlataforma = async (): Promise<PadroesPlataforma | null> => {
+    const { data, error } = await supabase.from('plataforma_config').select('*').eq('id', 1).maybeSingle();
+    if (error || !data) return null;
+    const { comissao_pct_propria, comissao_pct_app, comissao_fixa, repassa_taxa_pagamento, limite_debito } = data as any;
+    return { comissao_pct_propria, comissao_pct_app, comissao_fixa, repassa_taxa_pagamento, limite_debito };
+};
+
+export const salvarPadroesPlataforma = async (p: PadroesPlataforma) => {
+    const { error } = await supabase.from('plataforma_config').upsert({ id: 1, ...p, atualizado_em: new Date().toISOString() }, { onConflict: 'id' });
+    if (error) throw error;
+};
+
+/** Você é administrador da plataforma? `null` = não deu para perguntar (rede). */
+export const isPlatformAdmin = async (): Promise<boolean | null> => {
+    const { data, error } = await supabase.rpc('is_platform_admin');
+    if (error) return null;
+    return data === true;
+};
+
+/** O usuário logado é dono desta loja (ou administrador da plataforma)? `null` = erro de rede. */
+export const ownsStore = async (storeId: string): Promise<boolean | null> => {
+    const { data, error } = await supabase.rpc('owns_store', { sid: storeId });
+    if (error) return null;
+    return data === true;
+};
+
+// --- Shopping (Pede Aqui): lojas e produtos de todas as lojas que aparecem no shopping ---
+export interface LojaShopping {
+    id: string; name: string; slug: string; logo_url?: string | null;
+    categoria?: string | null; cidade?: string | null; subscription_end_date?: string | null;
+}
+export interface ProdutoBusca { id: string | number; name: string; price: number; image?: string | null; store_id: string }
+
+/** Lojas ativas, não vencidas e que marcaram "aparecer no shopping". */
+export const fetchLojasShopping = async (): Promise<LojaShopping[]> => {
+    const { data, error } = await supabase
+        .from('stores')
+        .select('id,name,slug,logo_url,categoria,cidade,subscription_end_date')
+        .eq('aparecer_no_shopping', true)
+        .eq('is_active', true)
+        .order('name');
+    if (error) throw error;
+    const agora = Date.now();
+    return ((data || []) as LojaShopping[]).filter(l => !l.subscription_end_date || new Date(l.subscription_end_date).getTime() > agora);
+};
+
+/** Busca produtos pelo nome nas lojas do shopping (no máximo 12, só disponíveis). */
+export const buscarProdutosShopping = async (termo: string, lojaIds: string[]): Promise<ProdutoBusca[]> => {
+    const t = termo.replace(/[%_,()]/g, ' ').trim();
+    if (t.length < 2 || lojaIds.length === 0) return [];
+    const { data, error } = await supabase
+        .from('menu_items')
+        .select('id,name,price,image,store_id')
+        .in('store_id', lojaIds)
+        .eq('is_available', true)
+        .ilike('name', `%${t}%`)
+        .limit(12);
+    if (error) throw error;
+    return (data || []) as ProdutoBusca[];
+};
+
+/** A loja deste usuário (um lojista tem no máximo uma), ou null. */
+export const fetchMinhaLoja = async (userId: string): Promise<Store | null> => {
+    const { data, error } = await supabase.from('stores').select('*').eq('owner_id', userId).limit(1);
+    if (error) throw error;
+    return (data?.[0] as Store) || null;
+};
+
+/** Cadastro sozinho do lojista: cria a loja dele com 7 dias de teste (regras no banco, função criar_minha_loja). */
+export const criarMinhaLoja = async (dados: { nome: string; slug: string; categoria?: string; cidade?: string }): Promise<Store> => {
+    const { data, error } = await supabase.rpc('criar_minha_loja', {
+        p_nome: dados.nome, p_slug: dados.slug, p_categoria: dados.categoria || null, p_cidade: dados.cidade || null,
+    });
+    if (error) throw error;
+    return data as Store;
+};
+
+export const fetchAllStores = async (): Promise<Store[]> => {
+    const { data, error } = await supabase
+        .from('stores')
+        .select('*')
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data as Store[];
+};
+
+export const fetchOpenOrderForTable = async (storeId: string, tableNumber: number): Promise<Order | null> => {
+    const { data, error } = await supabase
+        .from('orders')
+        .select(ORDER_COLUMNS)
+        .eq('store_id', storeId)
+        .eq('table_number', tableNumber)
+        .neq('status', 'Entregue')
+        .neq('status', 'Cancelado')
+        .order('timestamp', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (error && error.code === 'PGRST116') return null;
+    if (error) throw error;
+    return data ? mapOrderFromDB(data) : null;
+};
+
+// --- NEW: Fetch ALL open orders for a table ---
+export const fetchAllOpenOrdersForTable = async (storeId: string, tableNumber: number): Promise<Order[]> => {
+    const garcom = dosGarcom(storeId);
+    if (garcom) {
+        const r = await supabase.rpc('garcom_pedidos_mesa', { p_store: storeId, p_token: garcom.token, p_mesa: tableNumber });
+        if (r.error) throw r.error;
+        return ((r.data as any[]) || []).map(mapOrderFromDB);
+    }
+    const { data, error } = await supabase
+        .from('orders')
+        .select(ORDER_COLUMNS)
+        .eq('store_id', storeId)
+        .eq('table_number', tableNumber)
+        .neq('status', 'Entregue')
+        .neq('status', 'Cancelado')
+        .order('timestamp', { ascending: true });
+
+    if (error) throw error;
+    return (data || []).map(mapOrderFromDB);
+};
+
+// --- NEW: Batch update status for all table orders ---
+export const batchUpdateTableOrders = async (storeId: string, tableNumber: number, updates: Partial<any>) => {
+    const garcom = dosGarcom(storeId);
+    if (garcom) {
+        const r = await supabase.rpc('garcom_fechar_mesa', { p_store: storeId, p_token: garcom.token, p_mesa: tableNumber, p_pagamento: (updates as any).payment_method, p_troco: (updates as any).change_for ?? null });
+        if (r.error) throw new Error(r.error.message);
+        return r.data;
+    }
+    const dbUpdates = mapOrderToDB(updates);
+    const { data, error } = await supabase
+        .from('orders')
+        .update(dbUpdates)
+        .eq('store_id', storeId)
+        .eq('table_number', tableNumber)
+        .neq('status', 'Entregue')
+        .neq('status', 'Cancelado');
+
+    if (error) throw error;
+    return data;
+};
+
+// ============================================================================
+// FECHAMENTO DE CONTA FRACIONADO (Balcão/Comanda) — 01/10/2026
+// ----------------------------------------------------------------------------
+// Trazido do Papaleguas (claude-split-bill.sql) a pedido do Ikarus, véspera da
+// demo pro Marlon: mesa grande onde cada um paga sua parte (por pessoa/valor
+// ou por produto consumido). O saldo vive no BANCO (tabela table_payments),
+// não na tela -- não se perde se a máquina travar ou outro operador assumir.
+// NÃO altera a tabela `orders` -- só fecha (status 'Entregue') quando o saldo
+// zera, pelo mesmo caminho que o checkout normal já usa.
+// ============================================================================
+
+export interface TablePayment {
+    id: string;
+    amount: number;
+    payment_method: string;
+    split_mode: 'VALOR' | 'PRODUTO';
+    payer_label?: string;
+    split_total?: number;
+    split_index?: number;
+    items_json?: any[];
+    created_at: string;
+}
+
+export interface TableBalance {
+    table_number: number;
+    open_orders: number;
+    total: number;
+    paid: number;
+    balance: number;
+    is_settled: boolean;
+    payments: TablePayment[];
+}
+
+/** Saldo da mesa numa única chamada (total, pago, falta, lista de recebimentos). */
+export const getTableBalance = async (storeId: string, tableNumber: number): Promise<TableBalance | null> => {
+    const { data, error } = await supabase.rpc('get_table_balance', {
+        p_store_id: storeId,
+        p_table_number: tableNumber
+    });
+    if (error) { console.error('getTableBalance:', error); return null; }
+    return data as TableBalance;
+};
+
+/** Registra um pagamento parcial. Retorna o saldo já atualizado. */
+export const addTablePayment = async (params: {
+    storeId: string;
+    tableNumber: number;
+    amount: number;
+    paymentMethod: string;
+    splitMode?: 'VALOR' | 'PRODUTO';
+    payerLabel?: string;
+    splitTotal?: number;
+    splitIndex?: number;
+    itemsJson?: any[] | null;
+    changeFor?: number | null;
+    waiterName?: string | null;
+}): Promise<{ success: boolean; error?: string } & Partial<TableBalance>> => {
+    const { data, error } = await supabase.rpc('add_table_payment', {
+        p_store_id: params.storeId,
+        p_table_number: params.tableNumber,
+        p_amount: params.amount,
+        p_payment_method: params.paymentMethod,
+        p_split_mode: params.splitMode || 'VALOR',
+        p_payer_label: params.payerLabel || null,
+        p_split_total: params.splitTotal || null,
+        p_split_index: params.splitIndex || null,
+        p_items_json: params.itemsJson || null,
+        p_change_for: params.changeFor || null,
+        p_waiter_name: params.waiterName || null
+    });
+    if (error) { console.error('addTablePayment:', error); return { success: false, error: error.message }; }
+    return data as any;
+};
+
+/** Estorna um pagamento marcado por engano. */
+export const voidTablePayment = async (paymentId: string, reason?: string) => {
+    const { data, error } = await supabase.rpc('void_table_payment', {
+        p_payment_id: paymentId,
+        p_reason: reason || null
+    });
+    if (error) { console.error('voidTablePayment:', error); return { success: false, error: error.message }; }
+    return data as any;
+};
+
+/** Fecha a mesa. Só conclui com saldo zerado -- force=true perdoa a diferença. */
+export const settleTable = async (storeId: string, tableNumber: number, force = false, waiterName?: string) => {
+    const { data, error } = await supabase.rpc('settle_table', {
+        p_store_id: storeId,
+        p_table_number: tableNumber,
+        p_force: force,
+        p_waiter_name: waiterName || null
+    });
+    if (error) { console.error('settleTable:', error); return { success: false, error: error.message }; }
+    return data as any;
+};
+
+/**
+ * CRÍTICO (achado em 02/10/2026, relato do Ikarus: "deletei a comanda toda,
+ * abri uma nova no mesmo número, o F8 já mostrava 'Pessoa 1 · R$15 pago' de
+ * um cliente completamente diferente"): `table_payments` é indexado por
+ * (store_id, table_number) -- como a "comanda" é só um número de slot
+ * reaproveitável (1-20), não um pedido único, o histórico de pagamentos
+ * fracionados de um cliente antigo FICAVA LIGADO ao slot pra sempre, e o
+ * próximo cliente que usasse aquele número herdava os pagamentos de outro.
+ * Chamar isto sempre que um slot fica vazio de verdade (todos os pedidos da
+ * mesa saíram do estado aberto, seja por checkout normal, cancelamento, ou
+ * exclusão manual) -- zera o rastro de pagamentos fracionados daquele número
+ * antes que ele seja reaproveitado por outra comanda/cliente.
+ */
+export const clearTablePayments = async (storeId: string, tableNumber: number) => {
+    const { error } = await supabase
+        .from('table_payments')
+        .delete()
+        .eq('store_id', storeId)
+        .eq('table_number', tableNumber);
+    if (error) console.error('clearTablePayments:', error);
+};
+
+export const updateStoreSubscription = async (storeId: string, updates: any) => {
+    const { data, error } = await supabase
+        .from('stores')
+        .update(updates)
+        .eq('id', storeId)
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+};
+export const getGlobalStats = async () => {
+    // select('*') para funcionar também antes do SQL dos modelos (coluna modelo ainda inexistente).
+    const { data: stores, error } = await supabase
+        .from('stores')
+        .select('*');
+
+    if (error) throw error;
+
+    const lista = (stores || []) as Store[];
+    const totalStores = lista.length;
+    const activeStores = lista.filter(s => s.is_active).length;
+    const lojasDeComissao = lista.filter(s => s.modelo === 'comissao').length;
+    // Receita mensal recorrente: só as lojas de PDV pagam mensalidade (comissão não tem).
+    const mrr = lista.filter(s => s.modelo !== 'comissao' && s.is_active).reduce((acc, s) => acc + (s.plan_value || 0), 0);
+
+    return { totalStores, activeStores, lojasDeComissao, mrr };
+};
+
+export const fetchSalesByDateRange = async (storeId: string, startDate: string, endDate: string) => {
+    // Treat inputs as Local Date Components to respect browser's timezone selection
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T23:59:59.999');
+
+    // PAGINADO (auditoria de 05/10/2026): o servidor devolve no MAXIMO 1000 linhas
+    // por consulta, e a consulta antiga nao pedia mais paginas -- um periodo com
+    // mais de 1000 pedidos (o fechamento do mes do Marlon passa disso: ~57 pedidos
+    // por dia) vinha CORTADO, em silencio, com totais menores que os reais.
+    // Ordena por timestamp e por id (desempate) para as paginas nao repetirem nem
+    // pularem pedidos com a mesma data.
+    const TAMANHO_PAGINA = 1000;
+    const buscar = async (colunas: string) => {
+        const todos: any[] = [];
+        for (let de = 0; ; de += TAMANHO_PAGINA) {
+            const { data, error } = await supabase
+                .from('orders')
+                .select(colunas)
+                .eq('store_id', storeId)
+                .neq('status', 'Cancelado') // Include everything except Cancelled (User request: count pending/delivering too)
+                .gte('timestamp', start.toISOString())
+                .lte('timestamp', end.toISOString())
+                .order('timestamp', { ascending: false })
+                .order('id', { ascending: true })
+                .range(de, de + TAMANHO_PAGINA - 1);
+
+            if (error) throw error;
+            todos.push(...(data || []));
+            if (!data || data.length < TAMANHO_PAGINA) break;
+        }
+        return todos;
+    };
+    // `pagamentos` (15/10/2026): detalhe Dinheiro/PIX/Cartão de cada venda do Balcão V2 offline.
+    // Banco ainda sem a coluna -> busca sem ela (o Histórico continua igual a antes).
+    let todos: any[];
+    try {
+        todos = await buscar(`${ORDER_COLUMNS}, pagamentos`);
+    } catch (e: any) {
+        if (!/pagamentos/i.test(String(e?.message || ''))) throw e;
+        todos = await buscar(ORDER_COLUMNS);
+    }
+    return todos.map((dbOrder: any) => mapOrderFromDB(dbOrder));
+};
+
+export const deleteOrdersByDateRange = async (storeId: string, startDate: string, endDate: string) => {
+    // Treat inputs as Local Date Components
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T23:59:59.999');
+
+    const { error } = await supabase
+        .from('orders')
+        .delete()
+        .eq('store_id', storeId)
+        .gte('timestamp', start.toISOString())
+        .lte('timestamp', end.toISOString());
+
+    if (error) throw error;
+};
+
+export const fetchEligibleCustomersForRaffle = async (storeId: string, startDate: string, endDate: string) => {
+    // Treat inputs as Local Date Components
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T23:59:59.999');
+
+    // Fetch orders in range that are delivered
+    const { data: orders, error } = await supabase
+        .from('orders')
+        .select('customer_name, phone')
+        .eq('store_id', storeId)
+        .eq('status', 'Entregue')
+        .gte('timestamp', start.toISOString())
+        .lte('timestamp', end.toISOString());
+
+    if (error) throw error;
+
+    // Deduplicate by phone
+    const uniqueCustomers = new Map();
+    orders?.forEach((order: any) => {
+        if (order.phone && !uniqueCustomers.has(order.phone)) {
+            uniqueCustomers.set(order.phone, {
+                name: order.customer_name,
+                phone: order.phone
+            });
+        }
+    });
+
+    return Array.from(uniqueCustomers.values());
+};
+
+export const upsertCustomer = async (customerData: Partial<Customer>, defaultDDD: string = '32') => {
+    // Grava sempre na forma canonica (DDD+local, 10 digitos, sem o 9o
+    // digito) -- e o que faz "32920007226", "3220007226", "920007226" e
+    // "20007226" virarem o MESMO registro em vez de 4 clientes diferentes.
+    const payload = { ...customerData };
+    if (payload.phone) {
+        payload.phone = canonicalPhone(payload.phone, defaultDDD);
+    }
+
+    // Ensure store_id is present
+    if (!payload.store_id || !payload.phone) {
+        console.warn("upsertCustomer: Missing store_id or phone", payload);
+        return null;
+    }
+
+    const { data, error } = await supabase.rpc('salvar_cliente', { p: payload });
+
+    if (error) {
+        console.error('Error upserting customer:', error);
+        return null;
+    }
+    return data;
+};
+
+// --- Loyalty Program Services ---
+
+export const fetchCustomerLoyaltyHistory = async (phone: string, storeId: string) => {
+    const sanitizedPhone = phone.replace(/\D/g, ''); // Ensure numbers only
+    const { data, error } = await supabase.rpc('selos_do_cliente', { p_store: storeId, p_sufixo: sanitizedPhone });
+    if (error) throw error;
+    return ((data as any[]) || []).map((dbOrder: any) => mapOrderFromDB(dbOrder));
+};
+
+export const redeemLoyaltyReward = async (phone: string, storeId: string) => {
+    const sanitizedPhone = phone.replace(/\D/g, '');
+    const { error } = await supabase.rpc('resgatar_selos', { p_store: storeId, p_sufixo: sanitizedPhone });
+    if (error) {
+        console.error('Error redeeming loyalty orders:', error);
+        throw new Error(error.message || 'Falha ao registrar resgate de fidelidade. Tente novamente.');
+    }
+    return true;
+};
+
+// --- Courier Module Services ---
+
+export const verifyCourierLogin = async (phone: string, password: string, storeId: string) => {
+    const sanitizedPhone = phone.replace(/\D/g, '');
+    const { data, error } = await supabase
+        .from('couriers')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('phone', sanitizedPhone)
+        .eq('password', password)
+        .eq('is_active', true)
+        .single();
+    
+    if (error) return null;
+    return data;
+};
+
+// Sessao do entregador: id + token que o servidor entrega no login (a senha nunca fica guardada no aparelho).
+export type SessaoEntregador = { id: string; token: string };
+
+export const entregadorLogin = async (phone: string, password: string, storeId: string): Promise<{ courier: any; token: string } | null> => {
+    const { data, error } = await supabase.rpc('entregador_login', { p_store: storeId, p_phone: phone, p_senha: password });
+    if (error) throw error;
+    if (!data?.ok) { if (data?.erro) throw new Error(data.erro); return null; }
+    return { courier: data.courier, token: data.token };
+};
+
+export const entregadorCadastrar = async (name: string, phone: string, password: string, storeId: string, codigo: string) => {
+    const { data, error } = await supabase.rpc('entregador_cadastrar', { p_store: storeId, p_name: name, p_phone: phone, p_senha: password, p_codigo: codigo });
+    if (error) throw error;
+    if (!data?.ok) throw new Error(data?.erro || 'Nao foi possivel criar a conta.');
+};
+
+export const entregadorPedidosProntos = async (s: SessaoEntregador): Promise<Order[]> => {
+    const { data, error } = await supabase.rpc('entregador_pedidos_prontos', { p_courier: s.id, p_token: s.token });
+    if (error) throw error;
+    return ((data as any[]) || []).map(mapOrderFromDB);
+};
+export const entregadorEntregasAtivas = async (s: SessaoEntregador): Promise<Order[]> => {
+    const { data, error } = await supabase.rpc('entregador_entregas_ativas', { p_courier: s.id, p_token: s.token });
+    if (error) throw error;
+    return ((data as any[]) || []).map(mapOrderFromDB);
+};
+export const entregadorHistoricoDoDia = async (s: SessaoEntregador, date: Date): Promise<Order[]> => {
+    const ini = new Date(date); ini.setHours(0, 0, 0, 0);
+    const fim = new Date(date); fim.setHours(23, 59, 59, 999);
+    const { data, error } = await supabase.rpc('entregador_historico', { p_courier: s.id, p_token: s.token, p_ini: ini.toISOString(), p_fim: fim.toISOString() });
+    if (error) throw error;
+    return ((data as any[]) || []).map(mapOrderFromDB);
+};
+export const entregadorTotal = async (s: SessaoEntregador): Promise<number> => {
+    const { data, error } = await supabase.rpc('entregador_total', { p_courier: s.id, p_token: s.token });
+    if (error) throw error;
+    return Number(data) || 0;
+};
+export const entregadorPegar = async (s: SessaoEntregador, orderId: string) => {
+    const { data, error } = await supabase.rpc('entregador_pegar', { p_courier: s.id, p_token: s.token, p_order: orderId });
+    if (error) throw new Error(error.message);
+    return data;
+};
+export const entregadorStatus = async (s: SessaoEntregador, orderId: string, status: string) => {
+    const { data, error } = await supabase.rpc('entregador_status', { p_courier: s.id, p_token: s.token, p_order: orderId, p_status: status });
+    if (error) throw new Error(error.message);
+    return data;
+};
+
+export const registerCourier = async (name: string, phone: string, password: string, storeId: string) => {
+    const sanitizedPhone = phone.replace(/\D/g, '');
+    
+    const { data: existing } = await supabase
+        .from('couriers')
+        .select('id')
+        .eq('store_id', storeId)
+        .eq('phone', sanitizedPhone)
+        .single();
+        
+    if (existing) throw new Error('Telefone já cadastrado para este estabelecimento.');
+
+    const { data, error } = await supabase
+        .from('couriers')
+        .insert({
+            store_id: storeId,
+            name,
+            phone: sanitizedPhone,
+            password,
+            is_active: true
+        })
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
+};
+
+export const fetchCouriers = async (storeId: string) => {
+    const { data, error } = await supabase
+        .from('couriers')
+        .select('*')
+        .eq('store_id', storeId)
+        .order('name');
+    
+    if (error) throw error;
+    return data || [];
+};
+
+export const updateCourier = async (id: string, updates: Partial<any>) => {
+    const { data, error } = await supabase
+        .from('couriers')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+    
+    if (error) throw error;
+    return data;
+};
+
+export const fetchCourierHistoryByRange = async (courierId: string, startDate: Date, endDate: Date) => {
+    // Adjust dates for full day coverage if needed, but assuming caller handles it or we use exact timestamps
+    const { data, error } = await supabase
+        .from('orders')
+        .select(ORDER_COLUMNS)
+        .eq('courier_id', courierId)
+        .eq('status', 'Entregue')
+        .gte('timestamp', startDate.toISOString())
+        .lte('timestamp', endDate.toISOString())
+        .order('timestamp', { ascending: false });
+
+    if (error) throw error;
+    return (data || []).map(mapOrderFromDB);
+};
+
+export const fetchOrderById = async (orderId: string): Promise<Order | null> => {
+    const { data, error } = await supabase
+        .from('orders')
+        .select(ORDER_COLUMNS)
+        .eq('id', orderId)
+        .single();
+
+    if (error) {
+        console.error(`Error fetching order ${orderId}:`, error);
+        return null;
+    }
+    return data ? mapOrderFromDB(data) : null;
+};
+
+export const fetchReadyOrdersForCourier = async (storeId: string) => {
+    const { data, error } = await supabase
+        .from('orders')
+        .select(ORDER_COLUMNS)
+        .eq('store_id', storeId)
+        .eq('order_type', 'Entrega')
+        .in('status', ['Em Produção', 'Novo']) 
+        .is('courier_id', null)
+        .order('timestamp', { ascending: true });
+
+    if (error) throw error;
+    return (data || []).map((o: any) => mapOrderFromDB(o));
+};
+
+export const fetchCourierActiveDeliveries = async (courierId: string) => {
+    const { data, error } = await supabase
+        .from('orders')
+        .select(ORDER_COLUMNS)
+        .eq('courier_id', courierId)
+        .in('status', ['A Caminho', 'No Portão']) 
+        .order('timestamp', { ascending: false });
+
+    if (error) throw error;
+    return (data || []).map((o: any) => mapOrderFromDB(o));
+};
+
+export const fetchCourierTotalDeliveries = async (courierId: string): Promise<number> => {
+    const { count, error } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('courier_id', courierId)
+        .eq('status', 'Entregue');
+
+    if (error) {
+        console.error('Error fetching total deliveries count:', error);
+        return 0;
+    }
+    return count || 0;
+};
+
+export const fetchCourierHistoryByDate = async (courierId: string, date: Date): Promise<Order[]> => {
+    // Start of day
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    
+    // End of day
+    const end = new Date(date);
+    end.setHours(23, 59, 59, 999);
+
+    const { data, error } = await supabase
+        .from('orders')
+        .select(ORDER_COLUMNS)
+        .eq('courier_id', courierId)
+        .eq('status', 'Entregue')
+        .gte('timestamp', start.toISOString())
+        .lte('timestamp', end.toISOString())
+        .order('timestamp', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching courier history by date:', error);
+        return [];
+    }
+    return (data || []).map(mapOrderFromDB);
+};
+
+// Deprecated or generic recent history (optional, currently used by UI but we will replace its usage)
+export const fetchCourierHistory = async (courierId: string): Promise<Order[]> => {
+    return fetchCourierHistoryByDate(courierId, new Date());
+};
+
+export const assignOrderToCourier = async (orderId: string, courierId: string, courierName: string) => {
+    // 1. Fetch current order to get history
+    const { data: currentOrder } = await supabase.from('orders').select('status_history').eq('id', orderId).single();
+    const currentHistory = currentOrder?.status_history || [];
+    const newHistory = [...currentHistory, { status: 'A Caminho', timestamp: new Date().toISOString() }];
+
+    const { data, error } = await supabase
+        .from('orders')
+        .update({
+            courier_id: courierId,
+            courier_name: courierName, 
+            status: 'A Caminho',
+            status_history: newHistory
+        })
+        .eq('id', orderId)
+        .select()
+        .single();
+    
+    if (error) throw error;
+    return data;
+};
+
+export const updateOrderDeliveryStatus = async (orderId: string, newStatus: string) => {
+    // 1. Fetch current order to get history
+    const { data: currentOrder } = await supabase.from('orders').select('status_history').eq('id', orderId).single();
+    const currentHistory = currentOrder?.status_history || [];
+    const newHistory = [...currentHistory, { status: newStatus, timestamp: new Date().toISOString() }];
+
+    const { data, error } = await supabase
+        .from('orders')
+        .update({
+            status: newStatus,
+            status_history: newHistory
+        })
+        .eq('id', orderId)
+        .select()
+        .single();
+    
+    if (error) throw error;
+    return data;
+};
+
+export const fetchDynamicDeliveryFee = async (address: string): Promise<number | null> => {
+    if (!address || address.trim().length < 3) return null;
+    try {
+        const { data, error } = await supabase.rpc('get_delivery_fee_by_address', { p_address: address });
+        if (error) {
+            console.error('Error fetching dynamic delivery fee:', error);
+            return null;
+        }
+        return data as number;
+    } catch (e) {
+        console.error('Exception fetching dynamic delivery fee:', e);
+        return null;
+    }
+};
+
+// --- Bolão ---
+export const submitBolaoGuess = async (storeId: string, phone: string, brazilScore: number, opponentScore: number) => {
+    let sanitizedPhone = phone.replace(/\D/g, '');
+    if (sanitizedPhone.startsWith('55') && sanitizedPhone.length > 11) {
+        sanitizedPhone = sanitizedPhone.substring(2);
+    }
+    const { data, error } = await supabase
+        .from('bolao_guesses')
+        .insert({
+            store_id: storeId,
+            phone: sanitizedPhone,
+            brazil_score: brazilScore,
+            opponent_score: opponentScore
+        })
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+};
+
+export const fetchBolaoGuessByPhone = async (phone: string, storeId: string) => {
+    let sanitizedPhone = phone.replace(/\D/g, '');
+    if (sanitizedPhone.startsWith('55') && sanitizedPhone.length > 11) {
+        sanitizedPhone = sanitizedPhone.substring(2);
+    }
+    const { data, error } = await supabase
+        .from('bolao_guesses')
+        .select('*')
+        .eq('phone', sanitizedPhone)
+        .eq('store_id', storeId)
+        .single();
+    if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching bolao guess:', error);
+        return null;
+    }
+    return data;
+};
+
+export const fetchAllBolaoGuesses = async (storeId: string) => {
+    const { data, error } = await supabase
+        .from('bolao_guesses')
+        .select('*')
+        .eq('store_id', storeId)
+        .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data;
+};
+
+// --- TV Ads Services ---
+export const fetchTvAds = async (storeId: string) => {
+    const { data, error } = await supabase
+        .from('tv_ads')
+        .select('*')
+        .eq('store_id', storeId)
+        .order('created_at', { ascending: false });
+    if (error && error.code !== '42P01') throw error; // Ignore table doesn't exist for now
+    return data || [];
+};
+
+export const createTvAd = async (ad: any) => {
+    const { data, error } = await supabase.from('tv_ads').insert(ad).select().single();
+    if (error) throw error;
+    return data;
+};
+
+export const updateTvAd = async (id: string, updates: any) => {
+    const { data, error } = await supabase.from('tv_ads').update(updates).eq('id', id).select().single();
+    if (error) throw error;
+    return data;
+};
+
+export const deleteTvAd = async (id: string) => {
+    const { error } = await supabase.from('tv_ads').delete().eq('id', id);
+    if (error) throw error;
+};
+
+
+/** Bairro (zona de entrega) que aparece no endereco; se dois nomes casam, vale o mais longo (VALE DO OURO ROCA antes de VALE DO OURO). */
+export const zonaDoEndereco = (zonas: any[], endereco: string): any | null => {
+    const sem = (t: string) => (t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const alvo = sem(endereco);
+    const achadas = (zonas || []).filter(z => z.is_active !== false && z.neighborhood_name && alvo.includes(sem(z.neighborhood_name)));
+    achadas.sort((x, y) => String(y.neighborhood_name).length - String(x.neighborhood_name).length);
+    return achadas[0] || null;
+};
+export const fetchDeliveryZones = async (storeId: string): Promise<any[]> => {
+    try {
+        const { data, error } = await supabase.from('delivery_zones').select('*').eq('store_id', storeId).order('neighborhood_name');
+        if (error) throw error;
+        return data || [];
+    } catch (e) { console.error('Error fetching delivery zones:', e); return []; }
+};
+export const createDeliveryZone = async (zone: any): Promise<any> => {
+    const { data, error } = await supabase.from('delivery_zones').insert([zone]).select();
+    if (error) throw error;
+    return data[0];
+};
+export const updateDeliveryZone = async (id: string, updates: any): Promise<void> => {
+    const { error } = await supabase.from('delivery_zones').update(updates).eq('id', id);
+    if (error) throw error;
+};
+export const deleteDeliveryZone = async (id: string): Promise<void> => {
+    const { error } = await supabase.from('delivery_zones').delete().eq('id', id);
+    if (error) throw error;
+};
+

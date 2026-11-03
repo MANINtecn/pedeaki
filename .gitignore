@@ -1,0 +1,107 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+DIARIO-PEDEAKI.md
+dist
+dist-electron
+dist-ssr
+*.local
+.env
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Build, Binaries and Errors
+*.txt
+*.exe
+*.js.map
+servidor.js
+servidor.cjs
+servidor_test.js
+dist_v141/
+AcaiDoDudu_Final/
+resources/
+scratch/
+build/*
+!build/icon.ico
+!build/icon.png
+bin/
+local-printer/
+creativos para insta/
+Conteudos para publi/
+
+# Backups and Temp Data
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.node.json
+!firebase.json
+!vercel.json
+!metadata.json
+*.json.bak
+backup_*.json
+ultimo chat
+chaves
+chaves_api.txt
+
+# SQL and DB Scripts (ignore local copies if they are just for reference)
+/*.sql
+test_rpc.cjs
+test_supabase.cjs
+apply_fix.js
+check_db_v3.js
+check_history.js
+setup_db_cleanup.js
+setup_db_cleanup_esm.js
+setup_db_final.ts
+test_rpc_customer.ts
+
+# Supabase CLI local cache (contains project refs/pooler URLs)
+supabase/.temp/
+
+# Backups locais e rascunhos soltos na raiz (não fazem parte do produto)
+backups/
+claude-codigos-balcao.html
+claude-ouvir-sirenes.html
+temp_menu.html
+deno.lock
+
+# Bundles gerados pelos testes do balcão (scripts/teste-balcao): refaça com build.cjs
+scripts/teste-balcao/aba.cjs
+scripts/teste-balcao/atencoes.cjs
+scripts/teste-balcao/balanca.cjs
+scripts/teste-balcao/comissao.cjs
+scripts/teste-balcao/complementos.cjs
+scripts/teste-balcao/credencial.cjs
+scripts/teste-balcao/enviadas.cjs
+scripts/teste-balcao/fase4.cjs
+scripts/teste-balcao/fechamento.cjs
+scripts/teste-balcao/fila.cjs
+scripts/teste-balcao/fuzz.cjs
+scripts/teste-balcao/g.cjs
+scripts/teste-balcao/historico.cjs
+scripts/teste-balcao/i.cjs
+scripts/teste-balcao/offline.cjs
+scripts/teste-balcao/peso.cjs
+scripts/teste-balcao/pico.cjs
+scripts/teste-balcao/recursos.cjs
+scripts/teste-balcao/troca.cjs
+scripts/teste-balcao/enviadas_193.cjs
+scripts/teste-balcao/pico_on.cjs
+scripts/teste-balcao/pico_prod.cjs

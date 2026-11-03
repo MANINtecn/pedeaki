@@ -1,0 +1,107 @@
+{
+  "name": "pedeaki",
+  "private": true,
+  "version": "1.0.97",
+  "description": "Pede Aqui: delivery, pedidos pelo celular e PDV para lojas",
+  "author": "TECX SISTEMAS",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "concurrently \"npm run dev\" \"electron .\"",
+    "lint:atalhos": "node scripts/checar-atalhos.cjs",
+    "build:bot": "esbuild servidor.ts --bundle --platform=node --format=cjs --outfile=servidor.cjs --external:electron --external:path --external:fs --external:os --external:http",
+    "electron:build": "npm run lint:atalhos && npm run build:bot && vite build --base=./ --mode electron && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.3",
+    "@whiskeysockets/baileys": "^6.6.0",
+    "axios": "^1.6.7",
+    "clsx": "^2.1.0",
+    "concurrently": "^8.2.2",
+    "date-fns": "^3.3.1",
+    "dotenv": "^16.4.5",
+    "electron-store": "^8.1.0",
+    "electron-updater": "^6.1.7",
+    "framer-motion": "^11.0.3",
+    "intro.js": "^7.2.0",
+    "lucide-react": "^0.330.0",
+    "openai": "^4.28.0",
+    "pino": "^8.19.0",
+    "qrcode-terminal": "^0.12.0",
+    "qrcode.react": "^3.1.0",
+    "react": "^18.2.0",
+    "react-confetti": "^6.1.0",
+    "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.4.1",
+    "react-router-dom": "^6.22.0",
+    "tailwind-merge": "^2.2.1",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "@types/react": "^18.2.55",
+    "@types/react-dom": "^18.2.19",
+    "@vitejs/plugin-legacy": "^5.4.3",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.17",
+    "electron": "^31.7.7",
+    "electron-builder": "^26.4.0",
+    "postcss": "^8.4.35",
+    "supabase": "^2.95.6",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.2.2",
+    "vite": "^5.1.0",
+    "vite-plugin-pwa": "^0.19.0"
+  },
+  "build": {
+    "appId": "com.tecx.pedeaki",
+    "productName": "Pede Aqui",
+    "copyright": "Copyright © 2026 TECX SISTEMAS",
+    "compression": "normal",
+    "icon": "build/icon.ico",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "MANINtecn",
+        "repo": "pedeaki"
+      }
+    ],
+    "extraResources": [
+      "printer_raw.ps1",
+      "printer_worker.ps1"
+    ],
+    "files": [
+      "dist/**/*",
+      "build/**/*",
+      "main.js",
+      "print-worker.js",
+      "preload.cjs",
+      "servidor.cjs",
+      "servidor.js",
+      "package.json",
+      "resources/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pede Aqui"
+    },
+    "portable": {
+      "artifactName": "PedeAqui-Portable.exe"
+    }
+  }
+}

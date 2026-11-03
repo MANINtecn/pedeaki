@@ -1,0 +1,112 @@
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import legacy from '@vitejs/plugin-legacy'
+import { VitePWA } from 'vite-plugin-pwa'
+
+export default defineConfig(({ mode }) => ({
+  // Site (Vercel): caminhos absolutos. Com './' o navegador resolvia ./assets/x.js a partir da URL atual
+  // (em /super-admin/lojas virava /super-admin/assets/x.js, que o rewrite devolve como HTML) e a pagina
+  // ficava em branco ao atualizar ou voltar. O .exe continua com './' porque o script electron:build
+  // passa --base=./ explicitamente (file://).
+  base: '/',
+  plugins: [
+    react(),
+    // LEGACY SO NO SITE, NUNCA NO ELECTRON.
+    //
+    // O .exe carrega por file:// (main.js: loadFile). Nesse protocolo a flag
+    // window.__vite_is_modern_browser nem sempre e definida, e o script inline
+    // do plugin injeta o bundle legacy POR CIMA do moderno:
+    //
+    //     if (window.__vite_is_modern_browser) return;   // nao retorna
+    //
+    // Resultado: DOIS AdminPage rodando ao mesmo tempo, com dois pollings,
+    // dois realtime, dois caches de estacao e dois listeners de teclado.
+    // Foi a causa de: sirene tocando com escopo "mudo", impressao em 2 vias,
+    // campo de nome travando "as vezes" e o checkout "travado por tras".
+    // Visivel no console: a mesma linha duas vezes, uma de AdminPage-*.js e
+    // outra de AdminPage-legacy-*.js.
+    //
+    // O Electron 31 embute o Chrome 126: nunca precisou de legacy.
+    // O site (Vercel) continua com ele, para celular antigo abrir o cardapio.
+    ...(mode === 'electron' ? [] : [
+      legacy({
+        targets: ['defaults', 'not IE 11', 'chrome >= 49', 'android >= 5'],
+      }),
+    ]),
+    VitePWA({
+      registerType: 'autoUpdate',
+      injectRegister: 'auto',
+      includeAssets: ['pwa-192x192.png', 'pwa-512x512.png', 'icon.png'],
+      workbox: {
+        cleanupOutdatedCaches: true,
+        // aviso de pedido novo com a tela bloqueada (Web Push): o tratador do 'push' fica em public/push-sw.js
+        importScripts: ['push-sw.js'],
+        // Pré-cache só do essencial (a casca do app). Antes ia tudo para o celular do cliente na primeira visita
+        // (7 MB: versão legada, painel do lojista, fotos), o que pesava na internet dele e na transferência da Vercel.
+        // O resto é guardado quando for usado (runtimeCaching abaixo).
+        globPatterns: ['**/*.{js,css,html}'],
+        globIgnores: ['**/*-legacy-*', '**/AdminPage-*', '**/SuperAdminPage-*', '**/CentralDeGestao-*'],
+        maximumFileSizeToCacheInBytes: 1_500_000,
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api\//],
+        runtimeCaching: [
+          {
+            // código das telas (painel, super admin...) e navegadores antigos: guarda ao usar e atualiza em segundo plano
+            urlPattern: ({ url }: any) => url.pathname.startsWith('/assets/') && /\.(js|css)$/.test(url.pathname),
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'telas', expiration: { maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 30 } }
+          },
+          {
+            // fotos e ícones: guarda por 30 dias
+            urlPattern: ({ request }: any) => request.destination === 'image',
+            handler: 'CacheFirst',
+            options: { cacheName: 'imagens', expiration: { maxEntries: 120, maxAgeSeconds: 60 * 60 * 24 * 30 }, cacheableResponse: { statuses: [0, 200] } }
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // <== 365 days
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          }
+        ]
+      },
+      manifest: {
+        name: 'Pede Aqui',
+        short_name: 'Pede Aqui',
+        description: 'Peça pelo celular nas lojas da sua cidade.',
+        theme_color: '#ea580c',
+        background_color: '#fff8f1',
+        display: 'standalone',
+        orientation: 'portrait',
+        start_url: '/',
+        scope: '/',
+        icons: [
+          {
+            src: 'pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: 'pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png'
+          },
+          {
+            src: 'pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable'
+          }
+        ]
+      }
+    })
+  ]
+}))

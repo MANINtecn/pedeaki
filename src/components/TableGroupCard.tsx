@@ -1,0 +1,211 @@
+import React, { useState } from 'react';
+import { nomeDaComanda } from '../utils/mesaUtils';
+import { Order } from '../types';
+import { Printer, XCircle, CheckCircle, ChevronDown, ChevronUp, PlusCircle, DollarSign } from 'lucide-react';
+
+interface TableGroupCardProps {
+    tableNumber: number;
+    orders: Order[];
+    onPrint: (order: Order) => void;
+    onCancel: (order: Order) => void;
+    onAdvanceStatus: (order: Order) => void;
+    onEdit: (order: Order) => void;
+    /** "MESA" (padrão) ou "COMANDA" -- Balcão V2 usa slots 1-20 como comanda,
+     * não mesa física. Achado em 30/09/2026, print do Ikarus mostrando
+     * "MESA 1/2" na tela de salão mesmo tendo lançado como comanda. */
+    rotulo?: string;
+}
+
+const TableGroupCard: React.FC<TableGroupCardProps> = ({ tableNumber, orders, onPrint, onCancel, onAdvanceStatus, onEdit, rotulo = 'MESA' }) => {
+    const [isExpanded, setIsExpanded] = useState(true); // Default expanded to show content
+    
+    // Sum total of all sub-orders
+    const totalAmount = orders.reduce((sum, o) => sum + (o.total || 0), 0);
+    
+    // Determine main status
+    const mainStatus = orders.some(o => o.status === 'Conta Solicitada') ? 'Conta Solicitada'
+                     : orders.some(o => o.status === 'Novo') ? 'Novo' 
+                     : orders.some(o => o.status === 'Em Produção') ? 'Em Produção'
+                     : 'Entregue';
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'Novo': return 'bg-blue-500 text-white';
+            case 'Em Produção': return 'bg-yellow-500 text-black';
+            case 'A Caminho': return 'bg-purple-500 text-white';
+            case 'No Portão': return 'bg-orange-500 text-white';
+            case 'Entregue': return 'bg-green-500 text-white';
+            case 'Cancelado': return 'bg-red-500 text-white';
+            case 'Conta Solicitada': return 'bg-yellow-400 text-black border border-yellow-600';
+            default: return 'bg-gray-500 text-white';
+        }
+    };
+
+    // Dois rotulos apenas, um por acao real:
+    //   PRONTO        -> avanca o preparo (pedido ainda 'Novo')
+    //   FECHAR CONTA  -> encerra a mesa e cobra
+    // Antes existiam TRES nomes ("FINALIZAR MESA" e "FECHAR CONTA" para a mesma
+    // acao), o que fazia dois cards em estados diferentes parecerem inconsistentes.
+    const getNextAction = (status: string) => {
+        if (status === 'Novo') {
+            return { label: 'PRONTO', icon: <CheckCircle size={14} />, color: 'bg-green-600 hover:bg-green-700' };
+        }
+        return { label: 'FECHAR CONTA', icon: <DollarSign size={14} />, color: 'bg-green-600 hover:bg-green-700' };
+    };
+
+    const action = getNextAction(mainStatus);
+
+    // O nome chega grudado no numero ("Mesa 1 · TECX SISTEMAS"). Exibir cru
+    // ao lado de "MESA 1" duplicava: "MESA 1 · MESA 1 · TECX SIS...".
+    const nomeDaMesa = nomeDaComanda(orders);
+
+    return (
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow p-3 flex flex-col h-full min-w-0 text-xs">
+            {/* Header: Table Info */}
+            {/* Duas linhas (05/10/2026, print do Ikarus): antes titulo, nome, "1 pedido",
+                status e setinha disputavam UMA linha num card estreito e tudo quebrava.
+                Linha 1: COMANDA N + status + setinha. Linha 2: nome (corta com ...) + qtd. */}
+            <div className="mb-2 min-w-0">
+                <div className="flex items-center gap-1.5">
+                    <span className="flex-1 min-w-0 truncate whitespace-nowrap text-base font-bold text-blue-600 dark:text-blue-400 uppercase tracking-tighter">{rotulo} {tableNumber}</span>
+                    <span className={`shrink-0 whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold uppercase ${getStatusColor(mainStatus)}`}>
+                        {mainStatus}
+                    </span>
+                    <button
+                        onClick={() => setIsExpanded(!isExpanded)}
+                        className="shrink-0 p-0.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                    >
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+                </div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="flex-1 min-w-0 truncate whitespace-nowrap text-sm font-bold text-gray-700 dark:text-gray-200 uppercase tracking-tight" title={nomeDaMesa || ''}>
+                        {nomeDaMesa || ' '}
+                    </span>
+                    <span className="shrink-0 whitespace-nowrap px-1.5 py-0.5 bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 rounded text-[9px] font-bold uppercase">
+                        {orders.length} {orders.length === 1 ? 'Pedido' : 'Pedidos'}
+                    </span>
+                </div>
+            </div>
+
+            {/* Sub-orders Content */}
+            <div className={`flex-grow space-y-3 mb-2 overflow-y-auto max-h-64 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 pr-1 ${!isExpanded ? 'hidden' : ''}`}>
+                {[...orders]
+                    .sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime())
+                    .map((order, oIdx) => (
+                    <div key={order.id} className={`${oIdx > 0 ? 'mt-3 pt-3 border-t border-gray-100 dark:border-gray-700/50' : ''}`}>
+                        <div className="flex justify-between items-center mb-1.5">
+                            <span className="font-bold text-[10px] text-gray-500">
+                                #{order.dailyOrderNumber}-{oIdx + 1} • {new Date(order.timestamp || '').toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
+                            </span>
+                            <div className="flex gap-1">
+                                <button
+                                    onClick={() => onPrint({ ...order, subOrderIndex: oIdx + 1 })}
+                                    className="p-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                                    title="Imprimir"
+                                >
+                                    <Printer size={14} />
+                                </button>
+                                <button
+                                    onClick={() => onCancel(order)}
+                                    className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                                    title="Cancelar"
+                                >
+                                    <XCircle size={14} />
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-1">
+                            {(order.items || []).map((item, idx) => (
+                                <div key={idx} className="text-xs text-gray-700 dark:text-gray-300 leading-tight flex justify-between">
+                                    <span className="font-bold min-w-0 break-words">{item.quantity}x {item.name}</span>
+                                    <span className="shrink-0 text-gray-500 dark:text-gray-500 whitespace-nowrap ml-2">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        {order.status !== 'Entregue' && (
+                             <div className="mt-2 flex justify-between items-center">
+                                <span className={`text-[10px] font-bold uppercase ${order.status === 'Novo' ? 'text-blue-500' : 'text-gray-500'}`}>{order.status}</span>
+                                <button 
+                                    onClick={() => onAdvanceStatus(order)}
+                                    className="text-[10px] font-black text-blue-600 hover:underline active:scale-95 cursor-pointer flex items-center gap-1"
+                                >
+                                    AVANÇAR <CheckCircle size={12} />
+                                </button>
+                             </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            {/* Footer / Actions */}
+            <div className="mt-auto pt-3 border-t border-gray-100 dark:border-gray-700">
+                <div className="flex justify-between items-center gap-2 mb-3">
+                    <span className="min-w-0 truncate text-[10px] font-black uppercase text-gray-400">Total</span>
+                    <span className="shrink-0 whitespace-nowrap text-base font-bold text-gray-900 dark:text-gray-100">R$ {totalAmount.toFixed(2)}</span>
+                </div>
+
+                {/* Acao principal em LARGURA TOTAL e destacada.
+                    No balcao o operador fecha conta o tempo todo: este botao
+                    (FECHAR CONTA / PRONTO) precisa ser o alvo obvio e grande,
+                    nao um dos dois botoes pequenos lado a lado. */}
+                <button
+                    onClick={() => {
+                        // CRÍTICO (achado pela auditoria de 01/10/2026, causa
+                        // provável do caixa não bater para o cliente Marlon):
+                        // quando a ação é "FECHAR CONTA" (mesa com mais de um
+                        // sub-pedido -- cliente pediu, depois pediu mais),
+                        // SEMPRE manda o pedido VIRTUAL com a soma de todos
+                        // os sub-pedidos (igual abrirComandaDaMesa já faz),
+                        // nunca um sub-pedido isolado. Antes, em certos
+                        // estados (ex.: sub-pedido ainda 'Em Produção'), o
+                        // código pegava só UM sub-pedido -- o operador via e
+                        // cobrava um valor MENOR que o total real da mesa, e
+                        // o fechamento em lote marcava a mesa inteira como
+                        // paga mesmo assim.
+                        if (action.label === 'FECHAR CONTA') {
+                            const naoFinalizados = orders.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado');
+                            const base = naoFinalizados[0] || orders[0];
+                            onAdvanceStatus({
+                                ...base,
+                                status: 'Conta Solicitada',
+                                items: orders.flatMap(o => o.items || []),
+                                total: totalAmount,
+                            });
+                            return;
+                        }
+                        const activeOrders = orders.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado');
+                        // Prioritize advancing 'Novo' orders if the button is PRONTO
+                        const novoOrder = activeOrders.find(o => o.status === 'Novo');
+                        if (novoOrder) {
+                            onAdvanceStatus(novoOrder);
+                        } else if (activeOrders.length > 0) {
+                            onAdvanceStatus(activeOrders[0]);
+                        }
+                    }}
+                    className={`w-full mb-2 flex items-center justify-center gap-2 p-3 text-white font-black rounded-lg transition-all active:scale-95 cursor-pointer text-sm min-h-[48px] shadow-lg ring-2 ring-white/20 ${action.color}`}
+                >
+                    {action.label} {action.icon}
+                </button>
+
+                {/* Mesa já com conta fechada (todos os sub-pedidos
+                    'Entregue') não pode ganhar acréscimo por aqui -- mesmo
+                    motivo do OrderCard: achado pela auditoria de 01/10/2026. */}
+                {mainStatus !== 'Entregue' && (
+                <div className="grid grid-cols-1 gap-2">
+                    <button
+                        onClick={() => onEdit(orders[0])}
+                        className="flex items-center justify-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100 rounded-lg transition-colors text-[10px] min-h-[40px] border border-blue-100 dark:border-blue-900/30"
+                    >
+                        ADICIONAR <PlusCircle size={14} />
+                    </button>
+                </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default TableGroupCard;

@@ -1,0 +1,60 @@
+const { contextBridge, ipcRenderer } = require("electron");
+
+contextBridge.exposeInMainWorld("electron", {
+  checkForUpdate: () => ipcRenderer.invoke("check-for-update"),
+  downloadUpdate: () => ipcRenderer.invoke("download-update"),
+  quitAndInstall: () => ipcRenderer.invoke("quit-and-install"),
+  getAppVersion: () => ipcRenderer.invoke("get-app-version"),
+
+  // Salva o log da balanca num .txt na Area de Trabalho, para o log nao se
+  // perder ao copiar/limpar. Retorna o caminho do arquivo.
+  salvarLogBalanca: (texto) => ipcRenderer.invoke("salvar-log-balanca", texto),
+
+  // BootCheckModal: avisa o processo principal que o foco de teclado foi
+  // confirmado de verdade (nao so o timeout). Sem isso, o main.js reinicia
+  // o app sozinho apos alguns segundos (ver 'ambiente-pronto' no main.js).
+  confirmarFocoOk: () => ipcRenderer.send("ambiente-pronto"),
+  // Devolve o teclado para a pagina depois de alert()/confirm() (ver main.js).
+  refocarJanela: () => ipcRenderer.send("refocar-janela"),
+  onAmbienteFalhouDefinitivo: (callback) => ipcRenderer.on("ambiente-falhou-definitivo", (event, ...args) => callback(...args)),
+
+  // Listeners
+  onUpdateAvailable: (callback) => ipcRenderer.on("update-available", (event, ...args) => callback(...args)),
+  onUpdateNotAvailable: (callback) => ipcRenderer.on("update-not-available", (event, ...args) => callback(...args)),
+  onUpdateDownloadProgress: (callback) => ipcRenderer.on("update-download-progress", (event, ...args) => callback(...args)),
+  onUpdateDownloaded: (callback) => ipcRenderer.on("update-downloaded", (event, ...args) => callback(...args)),
+  onUpdateError: (callback) => ipcRenderer.on("update-error", (event, ...args) => callback(...args)),
+  
+  // WhatsApp Bot listeners
+  onWhatsAppQR: (callback) => ipcRenderer.on("whatsapp-qr", (event, ...args) => callback(...args)),
+  onWhatsAppStatus: (callback) => ipcRenderer.on("whatsapp-status", (event, ...args) => callback(...args)),
+  onBotLog: (callback) => ipcRenderer.on("bot-log", (event, ...args) => callback(...args)),
+  onTunnelUrl: (callback) => ipcRenderer.on("tunnel-url", (event, ...args) => callback(...args)),
+
+  
+  // Cleaners to remove listeners if needed (React UseEffect cleanup)
+  removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
+
+  // Balcao V2 offline (15/10/2026): arquivo de comandas/vendas em userData (ver main.js)
+  balcao: {
+    carregar: () => ipcRenderer.invoke("balcao-carregar"),
+    salvar: (texto) => ipcRenderer.invoke("balcao-salvar", texto),
+    diario: (linha) => ipcRenderer.invoke("balcao-diario", linha),
+    espacoLivre: () => ipcRenderer.invoke("balcao-espaco-livre"),
+    log: (msg) => ipcRenderer.invoke("balcao-log", msg),
+  },
+
+  // Storage API for Persistence
+  storage: {
+    getItem: (key) => ipcRenderer.invoke("storage-get", key),
+    setItem: (key, value) => ipcRenderer.invoke("storage-set", key, value),
+  removeItem: (key) => ipcRenderer.invoke("storage-remove", key),
+  },
+
+  // Bot Control
+  toggleBot: (enabled) => ipcRenderer.send("toggle-bot", enabled),
+  sendWhatsapp: (data) => ipcRenderer.send("send-whatsapp", data),
+  restartBot: () => ipcRenderer.send("restart-bot"),
+  resetWhatsAppSession: () => ipcRenderer.send("reset-whatsapp-session"),
+  forceSyncWebhook: () => ipcRenderer.invoke("force-sync-webhook")
+});
