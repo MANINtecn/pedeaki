@@ -105,3 +105,7 @@ scripts/teste-balcao/troca.cjs
 scripts/teste-balcao/enviadas_193.cjs
 scripts/teste-balcao/pico_on.cjs
 scripts/teste-balcao/pico_prod.cjs
+
+# Claude Code local
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
