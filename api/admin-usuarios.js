@@ -21,7 +21,8 @@ const erro = (status, mensagem) => ({ status, corpo: { erro: mensagem } });
 export async function tratar({ token, corpo, env, buscar }) {
     const base = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
     const anon = env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY;
-    const servico = env.SUPABASE_SERVICE_ROLE_KEY;
+    // Tira espaços, quebras de linha e aspas que costumam vir junto ao colar a chave na Vercel.
+    const servico = String(env.SUPABASE_SERVICE_ROLE_KEY || '').trim().replace(/^["']|["']$/g, '').trim();
     if (!base || !anon) return erro(500, 'Supabase não configurado na Vercel');
     if (!token) return erro(401, 'negado');
 
@@ -41,6 +42,11 @@ export async function tratar({ token, corpo, env, buscar }) {
     // Chave antiga (JWT, tem 3 partes separadas por ponto) vai nos dois cabeçalhos. Chave nova (sb_secret_...)
     // não é JWT: o Supabase só aceita no cabeçalho apikey e recusa se ela vier em Authorization.
     const chaveEhJwt = servico.split('.').length === 3;
+    /** Descreve a chave sem mostrá-la: só o formato, o tamanho e o começo do prefixo. Ajuda a achar chave errada. */
+    const descreverChave = () => {
+        const tipo = servico.startsWith('sb_secret_') ? 'sb_secret' : servico.startsWith('sb_publishable_') ? 'sb_publishable (chave pública, não serve)' : chaveEhJwt ? 'JWT antigo' : 'formato desconhecido';
+        return `tipo ${tipo}, ${servico.length} caracteres`;
+    };
     const cab = { apikey: servico, ...(chaveEhJwt ? { Authorization: `Bearer ${servico}` } : {}), 'Content-Type': 'application/json' };
     const chamar = async (caminho, opc = {}) => {
         const r = await buscar(`${base}${caminho}`, { ...opc, headers: { ...cab, ...(opc.headers || {}) } });
@@ -56,7 +62,7 @@ export async function tratar({ token, corpo, env, buscar }) {
     // Teste da chave: não mexe em nada.
     if (acao === 'teste') {
         const r = await chamar('/auth/v1/admin/users?per_page=1');
-        return r.ok ? { status: 200, corpo: { ok: true, chave: 'aceita' } } : erro(502, `chave de serviço recusada pelo Supabase (${r.status})`);
+        return r.ok ? { status: 200, corpo: { ok: true, chave: 'aceita' } } : erro(502, `chave de serviço recusada pelo Supabase (${r.status}: ${msg(r)}). A chave recebida: ${descreverChave()}.`);
     }
 
     /** Conta de administrador nunca é alterada por esta tela. */
@@ -67,6 +73,7 @@ export async function tratar({ token, corpo, env, buscar }) {
     const buscarUsuario = async (id) => {
         if (!id || !UUID.test(id)) return { erro: erro(400, 'login inválido') };
         const u = await chamar(`/auth/v1/admin/users/${id}`);
+        if (u.status === 401 || u.status === 403) return { erro: erro(502, `o Supabase recusou a chave de serviço: ${msg(u)} (chave recebida: ${descreverChave()})`) };
         if (!u.ok || !u.dados || !u.dados.id) return { erro: erro(404, 'login não encontrado') };
         return { usuario: u.dados };
     };
@@ -85,7 +92,7 @@ export async function tratar({ token, corpo, env, buscar }) {
             chamar('/rest/v1/stores?select=id,name,slug,owner_id'),
             chamar('/rest/v1/platform_admins?select=email'),
         ]);
-        if (!us.ok) return erro(502, `não foi possível listar os logins: ${msg(us)}`);
+        if (!us.ok) return erro(502, `não foi possível listar os logins: ${msg(us)} (chave recebida: ${descreverChave()})`);
         const admins = new Set((Array.isArray(ad.dados) ? ad.dados : []).map(a => String(a.email || '').toLowerCase()));
         const lojas = Array.isArray(ls.dados) ? ls.dados : [];
         const logins = ((us.dados && us.dados.users) || []).map(u => ({

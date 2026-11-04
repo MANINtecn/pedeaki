@@ -71,12 +71,12 @@ export const AcessoDoDono: React.FC<{ store: Store; onMudou: () => void }> = ({ 
             )}
 
             <div className="flex flex-wrap gap-2">
-                {store.owner_id && !protegido && <>
+                {store.owner_id && atual && !protegido && <>
                     <button type="button" disabled={ocupado} onClick={() => abrir('senha')} className={`${botao} bg-blue-600 hover:bg-blue-700 text-white`}>Trocar senha</button>
                     <button type="button" disabled={ocupado} onClick={() => abrir('email')} className={`${botao} bg-blue-600 hover:bg-blue-700 text-white`}>Trocar e-mail</button>
                 </>}
                 {store.owner_id && <button type="button" disabled={ocupado} onClick={soltar} className={`${botao} bg-yellow-700 hover:bg-yellow-600 text-white`}>Soltar</button>}
-                {store.owner_id && !protegido && <button type="button" disabled={ocupado} onClick={excluir} className={`${botao} bg-red-700 hover:bg-red-600 text-white`}>Excluir login</button>}
+                {store.owner_id && atual && !protegido && <button type="button" disabled={ocupado} onClick={excluir} className={`${botao} bg-red-700 hover:bg-red-600 text-white`}>Excluir login</button>}
                 <button type="button" disabled={ocupado} onClick={() => abrir('novo')} className={`${botao} bg-green-600 hover:bg-green-700 text-white`}>{store.owner_id ? 'Novo login' : 'Criar login'}</button>
                 <button type="button" disabled={ocupado || carregando || livres.length === 0} onClick={() => abrir('existente')} className={`${botao} bg-gray-600 hover:bg-gray-500 text-white`}>Usar um que já existe</button>
             </div>
@@ -112,6 +112,7 @@ export const AcessoDoDono: React.FC<{ store: Store; onMudou: () => void }> = ({ 
             )}
 
             {aviso && <p className={`text-sm ${aviso.tipo === 'ok' ? 'text-green-300' : 'text-red-300'}`}>{aviso.texto}</p>}
+            <button type="button" disabled={ocupado} onClick={() => executar({ acao: 'teste' }, 'Chave de serviço aceita pelo Supabase.')} className="text-xs text-gray-500 hover:text-gray-300 underline">Testar a chave de serviço</button>
             {entregar && (
                 <div className="rounded-lg bg-gray-900 border border-gray-600 p-3 space-y-2">
                     <p className="text-xs text-gray-400">Dados para enviar ao cliente (somem quando você fechar esta janela):</p>
