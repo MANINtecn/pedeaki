@@ -4,6 +4,8 @@ import { tipoDaLoja, ROTULO_DO_TIPO, type TipoDeLoja } from '../../services/recu
 import type { Store } from '../../types';
 import { usePlataforma } from './dados';
 import { CamposFinanceiros } from './CamposFinanceiros';
+import { AcessoDoDono } from './AcessoDoDono';
+import { chamarAdmin, gerarSenha, useLogins } from './logins';
 import { Janela, BotaoCancelar, BotaoPrincipal } from './Janela';
 import { FIN_PADRAO, VALOR_PADRAO, CATEGORIAS_LOJA, SLUGS_RESERVADOS, limparSlug, brl, pct, type FormFinanceiro } from './util';
 
@@ -16,7 +18,11 @@ export const LojasSecao: React.FC = () => {
     const { stores, financeiros, padroes, cardapio, recarregar } = usePlataforma();
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [editingStore, setEditingStore] = useState<Store | null>(null);
-    const [criada, setCriada] = useState<{ nome: string; slug: string; email: string; comLogin: boolean } | null>(null);
+    const [criada, setCriada] = useState<{ nome: string; slug: string; email: string; senha: string; comLogin: boolean; aviso?: string } | null>(null);
+    const { logins, recarregar: recarregarLogins } = useLogins();
+    // Login do dono ao criar a loja: 'novo' (cria agora, junto), 'depois' ou o id de um login que já existe.
+    const [loginModo, setLoginModo] = useState<string>('novo');
+    const [loginSenha, setLoginSenha] = useState('');
 
     const finPadroes = (): FormFinanceiro => ({ ...FIN_PADRAO, ...(padroes || {}) });
     const novoFormulario = (fin: FormFinanceiro = finPadroes()) => ({
@@ -30,12 +36,14 @@ export const LojasSecao: React.FC = () => {
 
     const handleCreateStore = async () => {
         const slug = limparSlug(newStore.slug || newStore.name);
-        const email = newStore.owner_email.trim().toLowerCase();
+        const existente = logins.find(l => l.id === loginModo);
+        const email = existente ? existente.email : (loginModo === 'novo' ? newStore.owner_email.trim().toLowerCase() : '');
         if (!newStore.name.trim()) return alert('Informe o nome da loja.');
         if (!slug) return alert('Informe um link (slug) válido.');
         if (SLUGS_RESERVADOS.includes(slug)) return alert(`"${slug}" é um endereço reservado do sistema. Escolha outro.`);
         if (stores.some(s => s.slug === slug)) return alert(`Já existe uma loja com o link "${slug}".`);
-        if (!email) return alert('Informe o e-mail do dono: é ele que dá acesso ao painel da loja.');
+        if (loginModo === 'novo' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return alert('Informe o e-mail do login do dono (pode ser de fachada).');
+        if (loginModo === 'novo' && loginSenha.length < 8) return alert('A senha do login precisa ter pelo menos 8 caracteres.');
         const comissao = newStore.tipo === 'comissao';
         if (comissao && padroes === null) return alert('As condições de comissão ainda não existem no banco. Rode o SQL 4 no Supabase antes de criar lojas.');
         try {
@@ -47,7 +55,7 @@ export const LojasSecao: React.FC = () => {
             const loja = await criarLojaCompleta({
                 name: newStore.name.trim(),
                 slug,
-                owner_email: email,
+                ...(email ? { owner_email: email } : {}),
                 modelo: comissao ? 'comissao' : 'pdv',
                 plan: comissao ? null : (newStore.tipo === 'pdv_basico' ? 'basico' : 'avancado'),
                 plan_value: comissao ? 0 : (newStore.plan_value || 0),
@@ -58,10 +66,15 @@ export const LojasSecao: React.FC = () => {
                 ...(newStore.aparecer_no_shopping ? { aparecer_no_shopping: true } : {}),
             }, comissao ? condicoes : undefined);
             setShowCreateModal(false);
-            // O banco liga o dono sozinho se a conta com esse e-mail já existe: aí não falta login nenhum.
-            setCriada({ nome: newStore.name.trim(), slug, email, comLogin: !!loja.owner_id });
-            setNewStore(novoFormulario());
-            recarregar();
+            // Login e loja são coisas separadas: a loja já existe; agora cria o login junto ou liga o escolhido.
+            let comLogin = !!loja.owner_id; let aviso: string | undefined;
+            try {
+                if (loginModo === 'novo') { await chamarAdmin({ acao: 'criar', email, senha: loginSenha, store_id: loja.id }); comLogin = true; }
+                else if (existente) { await chamarAdmin({ acao: 'vincular', store_id: loja.id, user_id: existente.id }); comLogin = true; }
+            } catch (e: any) { aviso = `A loja foi criada, mas o login não: ${e?.message || e}. Ligue um login na janela de editar a loja.`; }
+            setCriada({ nome: newStore.name.trim(), slug, email, senha: loginModo === 'novo' ? loginSenha : '', comLogin, aviso });
+            setNewStore(novoFormulario()); setLoginModo('novo'); setLoginSenha('');
+            recarregar(); recarregarLogins();
         } catch (error: any) {
             console.error(error);
             alert(`Erro ao criar loja: ${error?.message || error}`);
@@ -109,6 +122,7 @@ export const LojasSecao: React.FC = () => {
     };
 
     const linkDaLoja = (slug: string) => `${window.location.origin}/${slug}`;
+    const pacote = (c: { slug: string; email: string; senha: string }) => `Acesso ao painel da sua loja no Pede Aqui\nEndereço: ${linkDaLoja(c.slug)}/admin\nLogin: ${c.email}\nSenha: ${c.senha}`;
     const seletorDeTipo = (valor: TipoDeLoja, aoMudar: (t: TipoDeLoja) => void) => (
         <div>
             <label className="block text-sm font-medium text-gray-400 mb-1">Modelo da loja</label>
@@ -124,7 +138,7 @@ export const LojasSecao: React.FC = () => {
         <div>
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold text-white">Lojas</h1>
-                <button onClick={() => { setNewStore(novoFormulario()); setShowCreateModal(true); }} className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-bold transition">
+                <button onClick={() => { setNewStore(novoFormulario()); setLoginModo('novo'); setLoginSenha(''); setShowCreateModal(true); }} className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-bold transition">
                     <PlusIcon /> <span>Nova Loja</span>
                 </button>
             </div>
@@ -224,10 +238,17 @@ export const LojasSecao: React.FC = () => {
                         <p className="text-gray-300"><b>{criada.nome}</b></p>
                         <p className="text-sm text-gray-400">Link da loja (cardápio): <span className="text-blue-400 break-all">{linkDaLoja(criada.slug)}</span></p>
                         <p className="text-sm text-gray-400">Painel do dono: <span className="text-blue-400 break-all">{linkDaLoja(criada.slug)}/admin</span></p>
-                        {criada.comLogin ? (
-                            <p className="text-sm text-green-300">O dono (<b>{criada.email}</b>) já tem conta e foi ligado a esta loja sozinho. Ele já pode entrar no painel.</p>
-                        ) : (
-                            <p className="text-sm text-yellow-300">Falta o login: crie o usuário <b>{criada.email}</b> no Supabase (Authentication, Users, Add user, com "Auto Confirm User"). Ele é ligado a esta loja sozinho.</p>
+                        {criada.aviso && <p className="text-sm text-red-300">{criada.aviso}</p>}
+                        {criada.comLogin && criada.senha ? (
+                            <div className="rounded-lg bg-gray-900 border border-gray-600 p-3 space-y-2">
+                                <p className="text-xs text-gray-400">Dados para enviar ao cliente (somem quando você fechar esta janela):</p>
+                                <pre className="text-sm text-gray-100 whitespace-pre-wrap break-all">{pacote(criada)}</pre>
+                                <button type="button" onClick={() => { navigator.clipboard?.writeText(pacote(criada)).catch(() => {}); }} className="px-2 py-1 rounded text-xs font-bold bg-gray-600 hover:bg-gray-500 text-white">Copiar dados</button>
+                            </div>
+                        ) : criada.comLogin ? (
+                            <p className="text-sm text-green-300">A loja foi ligada ao login <b>{criada.email}</b>. Ele já pode entrar no painel.</p>
+                        ) : !criada.aviso && (
+                            <p className="text-sm text-yellow-300">A loja ainda não tem login. Ligue um na janela de editar a loja, ou crie um na aba Logins.</p>
                         )}
                     </div>
                 </Janela>
@@ -251,9 +272,20 @@ export const LojasSecao: React.FC = () => {
                                 <input type="text" value={newStore.slug} onChange={e => setNewStore({ ...newStore, slug: e.target.value })} className={campoBase} placeholder={limparSlug(newStore.name) || 'lanchonetedojoao'} />
                                 <p className="text-xs text-gray-500 mt-1">{window.location.origin}/{limparSlug(newStore.slug || newStore.name) || '...'}</p>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-1">Email do Dono</label>
-                                <input type="email" value={newStore.owner_email} onChange={e => setNewStore({ ...newStore, owner_email: e.target.value })} className={campoBase} placeholder="cliente@email.com" />
+                            <div className="rounded-lg border border-gray-700 p-3 space-y-3">
+                                <label className="block text-sm font-medium text-gray-400">Login do dono da loja</label>
+                                <select value={loginModo} onChange={e => setLoginModo(e.target.value)} className={campoBase}>
+                                    <option value="novo">Criar um login novo agora</option>
+                                    <option value="depois">Ligar um login depois</option>
+                                    {logins.map(l => <option key={l.id} value={l.id}>{l.email}{l.lojas.length ? ` (já usado em: ${l.lojas.map(x => x.nome).join(', ')})` : ' (livre)'}</option>)}
+                                </select>
+                                {loginModo === 'novo' && <>
+                                    <input type="email" value={newStore.owner_email} onChange={e => setNewStore({ ...newStore, owner_email: e.target.value })} className={campoBase} placeholder="login (e-mail, pode ser de fachada)" autoComplete="off" />
+                                    <div className="flex gap-2">
+                                        <input type="text" value={loginSenha} onChange={e => setLoginSenha(e.target.value)} className={campoBase} placeholder="senha (mínimo 8)" autoComplete="off" />
+                                        <button type="button" onClick={() => setLoginSenha(gerarSenha())} className="px-3 rounded-lg bg-gray-600 hover:bg-gray-500 text-white text-sm font-bold">Gerar</button>
+                                    </div>
+                                </>}
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
@@ -324,6 +356,7 @@ export const LojasSecao: React.FC = () => {
                                 <input type="checkbox" id="isActive" checked={editForm.is_active} onChange={e => setEditForm({ ...editForm, is_active: e.target.checked })} className="h-5 w-5 rounded text-blue-500 bg-gray-600 border-gray-500 focus:ring-blue-500" />
                                 <label htmlFor="isActive" className="text-white font-medium cursor-pointer">Loja Ativa</label>
                             </div>
+                            <AcessoDoDono store={stores.find(s => s.id === editingStore.id) || editingStore} onMudou={recarregar} />
                         </div>
                         <div className="space-y-4">
                             {editForm.tipo === 'comissao' ? (
