@@ -24,6 +24,8 @@ function banco(estado = {}) {
         const metodo = o.method || 'GET';
         e.chamadas.push(`${metodo} ${caminho}`);
         if (caminho.startsWith('/rest/v1/rpc/is_platform_admin')) return r(200, o.headers.Authorization === 'Bearer jwt-admin' && e.admin ? 'true' : 'false');
+        e.cabsServico = e.cabsServico || [];
+        if (o.headers.apikey === 'servico' || String(o.headers.apikey).startsWith('sb_secret_')) e.cabsServico.push(o.headers);
         if (o.headers.apikey === 'servico' && !e.servicoValido) return r(401, { message: 'Invalid API key' });
         if (caminho.startsWith('/auth/v1/admin/users?per_page=1000')) return r(200, { users: Object.entries(e.usuarios).map(([id, email]) => ({ id, email, created_at: '2026-11-01', last_sign_in_at: null })) });
         if (caminho.startsWith('/auth/v1/admin/users?per_page')) return r(200, { users: [] });
@@ -120,6 +122,14 @@ for (const acao of ['senha', 'email', 'excluir']) {
 }
 r = await rodar(b, 'jwt-admin', { acao: 'vincular', store_id: 'nao-uuid', user_id: DONO_ID });
 ok('loja inválida', r.status === 400);
+
+// chave no formato novo (sb_secret_): nao pode ir em Authorization
+b = banco();
+r = await tratar({ token: 'jwt-admin', corpo: { acao: 'listar' }, env: { ...env, SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_abc' }, buscar: b.buscar });
+ok('chave nova (sb_secret_): so no cabecalho apikey', r.status === 200 && b.e.cabsServico.length > 0 && b.e.cabsServico.every(h => !('Authorization' in h)));
+b = banco();
+r = await tratar({ token: 'jwt-admin', corpo: { acao: 'listar' }, env: { ...env, SUPABASE_SERVICE_ROLE_KEY: 'aaa.bbb.ccc' }, buscar: b.buscar });
+ok('chave antiga (JWT): nos dois cabecalhos', r.status === 200);
 
 console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

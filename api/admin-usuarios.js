@@ -38,7 +38,10 @@ export async function tratar({ token, corpo, env, buscar }) {
     if (!admin) return erro(403, 'negado');
 
     if (!servico) return erro(500, 'SUPABASE_SERVICE_ROLE_KEY não está configurada na Vercel');
-    const cab = { apikey: servico, Authorization: `Bearer ${servico}`, 'Content-Type': 'application/json' };
+    // Chave antiga (JWT, tem 3 partes separadas por ponto) vai nos dois cabeçalhos. Chave nova (sb_secret_...)
+    // não é JWT: o Supabase só aceita no cabeçalho apikey e recusa se ela vier em Authorization.
+    const chaveEhJwt = servico.split('.').length === 3;
+    const cab = { apikey: servico, ...(chaveEhJwt ? { Authorization: `Bearer ${servico}` } : {}), 'Content-Type': 'application/json' };
     const chamar = async (caminho, opc = {}) => {
         const r = await buscar(`${base}${caminho}`, { ...opc, headers: { ...cab, ...(opc.headers || {}) } });
         const t = await r.text();
