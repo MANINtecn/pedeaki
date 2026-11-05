@@ -650,7 +650,7 @@ if (!GH_TOKEN) {
 
 autoUpdater.setFeedURL({
   provider: "github",
-  owner: "manintecn",
+  owner: "THTECX",
   repo: "pedeaki",
   private: true,
   token: GH_TOKEN
