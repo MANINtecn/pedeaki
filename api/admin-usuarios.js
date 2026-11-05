@@ -8,8 +8,8 @@
  * Segurança: antes de qualquer ação, pergunta ao banco (função is_platform_admin, com o login de quem chamou)
  * se é administrador da plataforma. Sem isso nada acontece. Contas de administrador nunca são alteradas por aqui.
  *
- * Variáveis na Vercel: SUPABASE_SERVICE_ROLE_KEY (a chave de serviço) e as que o site já usa
- * (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY).
+ * Variáveis na Vercel: SUPABASE_SERVICE_ROLE_KEY (a chave de serviço, no formato sb_secret_... ou JWT antigo,
+ * nunca a sb_publishable) e as que o site já usa (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY).
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
