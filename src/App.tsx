@@ -265,8 +265,8 @@ const RootRoute: React.FC = () => {
     return <CustomerPage />;
   }
 
-  // Sem loja na raiz: é a página do shopping (Pede Aqui)
-  return <ShoppingHomePage />;
+  // Sem loja na raiz: é a nova vitrine do shopping (Pede Aki). A antiga continua em /shopping.
+  return <VitrinePage />;
 };
 
 export default App;
