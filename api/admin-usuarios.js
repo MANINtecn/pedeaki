@@ -1,5 +1,5 @@
 /**
- * Logins dos donos de loja, feitos pelo painel do Super Admin. Função serverless da Vercel.
+ * Pede Aqui: logins dos donos de loja, feitos pelo painel do Super Admin. Função serverless da Vercel.
  *
  * Quem chama: o painel (Super Admin), com o login do administrador no cabeçalho Authorization.
  * O que faz: login é uma coisa e loja é outra. Cria logins já confirmados (sem e-mail de confirmação), lista,
