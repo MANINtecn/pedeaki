@@ -252,7 +252,7 @@ const VitrinePage: React.FC = () => {
                     <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex flex-col items-center py-1 text-[#FF6A1A] font-bold"><Home size={20} /><span className="text-[10px] tracking-wider mt-0.5">Início</span></button>
                     <button onClick={irParaBusca} className="flex flex-col items-center py-1 text-[#B9B0C2] font-medium"><Search size={20} /><span className="text-[10px] tracking-wider mt-0.5">Busca</span></button>
                     <span className="flex flex-col items-center py-1 text-[#B9B0C2]/40 font-medium" title="O carrinho do shopping vem depois"><ShoppingCart size={20} /><span className="text-[10px] tracking-wider mt-0.5">Carrinho</span></span>
-                    <Link to="/entrar" className="flex flex-col items-center py-1 text-[#B9B0C2] font-medium"><User size={20} /><span className="text-[10px] tracking-wider mt-0.5">Perfil</span></Link>
+                    <Link to="/perfil" className="flex flex-col items-center py-1 text-[#B9B0C2] font-medium"><User size={20} /><span className="text-[10px] tracking-wider mt-0.5">Perfil</span></Link>
                 </nav>
             </div>
         </div>
