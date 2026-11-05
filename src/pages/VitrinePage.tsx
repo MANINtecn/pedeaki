@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-    MapPin, Search, UtensilsCrossed, Leaf, Pill, Wine, Tractor, Armchair, Gift, PartyPopper,
+    MapPin, Search, UtensilsCrossed, Leaf, Pill, Tractor, Gift, PartyPopper,
     Plus, Home, ShoppingCart, User, ArrowRight, Megaphone,
 } from 'lucide-react';
 import { fetchLojasShopping, type LojaShopping } from '../services/supabaseService';
@@ -21,9 +21,7 @@ const corte = (px: number): React.CSSProperties => ({
 const CATEGORIAS_EM_BREVE = [
     { nome: 'Hortifruti', cor: '#5FD068', Icone: Leaf },
     { nome: 'Farmácia', cor: '#2FC4B2', Icone: Pill },
-    { nome: 'Bebidas', cor: '#4DA3FF', Icone: Wine },
     { nome: 'Agro', cor: '#A3D133', Icone: Tractor },
-    { nome: 'Utilidades', cor: '#B07CFF', Icone: Armchair },
     { nome: 'Presentes', cor: '#F0649C', Icone: Gift },
     { nome: 'Eventos', cor: '#FF7A59', Icone: PartyPopper },
 ];
@@ -129,25 +127,25 @@ const VitrinePage: React.FC = () => {
                     </label>
                 </header>
 
-                <main className="flex flex-col gap-6 pt-3">
+                <main className="flex flex-col gap-4 pt-3">
 
                     {/* Categorias */}
                     <section className="flex flex-col gap-2.5">
                         {titulo('O QUE VOCÊ QUER HOJE?')}
-                        <div className="grid grid-cols-4 gap-2 px-4">
-                            <button onClick={irParaLojas} style={{ ...corte(10), boxShadow: '0 0 12px -2px rgba(255,106,26,.4)' }}
-                                className="relative bg-[#1A171F] py-2.5 px-1 border border-[#FF6A1A] flex flex-col items-center gap-1 active:scale-[0.97]">
-                                <span className="absolute top-1 right-2 w-1.5 h-1.5 rounded-full bg-[#FF6A1A] animate-pulse" />
-                                <UtensilsCrossed size={22} className="text-[#FF6A1A]" />
-                                <span style={{ fontFamily: 'Anton, sans-serif' }} className="text-[13px] tracking-wide uppercase leading-none">Comer</span>
-                                <span className="text-[8px] font-bold uppercase tracking-wider text-[#FF6A1A]">{lojas ? `${lojas.length} ${lojas.length === 1 ? 'loja' : 'lojas'}` : '...'}</span>
+                        <div className="grid grid-cols-6 gap-1.5 px-4">
+                            <button onClick={irParaLojas} style={{ ...corte(8), boxShadow: '0 0 12px -2px rgba(255,106,26,.4)' }}
+                                className="relative bg-[#1A171F] py-2 px-0.5 border border-[#FF6A1A] flex flex-col items-center gap-1 active:scale-[0.97]">
+                                <span className="absolute top-1 right-1.5 w-1 h-1 rounded-full bg-[#FF6A1A] animate-pulse" />
+                                <UtensilsCrossed size={18} className="text-[#FF6A1A]" />
+                                <span style={{ fontFamily: 'Anton, sans-serif' }} className="text-[11px] tracking-wide uppercase leading-none">Comer</span>
+                                <span className="text-[7px] font-bold uppercase tracking-wide text-[#FF6A1A]">{lojas ? `${lojas.length} ${lojas.length === 1 ? 'loja' : 'lojas'}` : '...'}</span>
                             </button>
                             {CATEGORIAS_EM_BREVE.map(({ nome, cor, Icone }) => (
-                                <div key={nome} style={{ ...corte(10), borderColor: `${cor}73` }}
-                                    className="bg-[#2A2430] py-2.5 px-1 border flex flex-col items-center gap-1">
-                                    <Icone size={22} style={{ color: cor }} />
-                                    <span style={{ fontFamily: 'Anton, sans-serif' }} className="text-[13px] tracking-wide uppercase leading-none">{nome}</span>
-                                    <span className="text-[8px] font-bold uppercase tracking-wider text-[#C9C1D1]">Em breve</span>
+                                <div key={nome} style={{ ...corte(8), borderColor: `${cor}73` }}
+                                    className="bg-[#2A2430] py-2 px-0.5 border flex flex-col items-center gap-1">
+                                    <Icone size={18} style={{ color: cor }} />
+                                    <span style={{ fontFamily: 'Anton, sans-serif' }} className="text-[10px] tracking-normal uppercase leading-none">{nome}</span>
+                                    <span className="text-[7px] font-bold uppercase tracking-wide text-[#C9C1D1]">Em breve</span>
                                 </div>
                             ))}
                         </div>
