@@ -3,7 +3,7 @@ import type { Store } from '../../types';
 import { chamarAdmin, gerarSenha, useLogins } from './logins';
 
 const campo = 'w-full bg-gray-700 border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500';
-const botao = 'px-3 py-2 rounded-lg text-sm font-bold transition disabled:opacity-50';
+const botao = 'px-3 py-2 rounded-lg text-sm font-bold transition border border-gray-500 text-gray-100 hover:bg-gray-700 hover:border-gray-300 disabled:opacity-50 disabled:hover:bg-transparent';
 
 type Painel = null | 'senha' | 'email' | 'novo' | 'existente';
 
@@ -53,7 +53,7 @@ export const AcessoDoDono: React.FC<{ store: Store; onMudou: () => void }> = ({ 
     const campoSenha = (
         <div className="flex gap-2">
             <input type="text" value={senha} onChange={e => setSenha(e.target.value)} className={campo} placeholder="Senha (mínimo 8 caracteres)" autoComplete="off" />
-            <button type="button" onClick={() => setSenha(gerarSenha())} className={`${botao} bg-gray-600 hover:bg-gray-500 text-white whitespace-nowrap`}>Gerar</button>
+            <button type="button" onClick={() => setSenha(gerarSenha())} className={`${botao} whitespace-nowrap`}>Gerar</button>
         </div>
     );
 
@@ -72,25 +72,25 @@ export const AcessoDoDono: React.FC<{ store: Store; onMudou: () => void }> = ({ 
 
             <div className="flex flex-wrap gap-2">
                 {store.owner_id && atual && !protegido && <>
-                    <button type="button" disabled={ocupado} onClick={() => abrir('senha')} className={`${botao} bg-blue-600 hover:bg-blue-700 text-white`}>Trocar senha</button>
-                    <button type="button" disabled={ocupado} onClick={() => abrir('email')} className={`${botao} bg-blue-600 hover:bg-blue-700 text-white`}>Trocar e-mail</button>
+                    <button type="button" disabled={ocupado} onClick={() => abrir('senha')} className={`${botao}`}>Trocar senha</button>
+                    <button type="button" disabled={ocupado} onClick={() => abrir('email')} className={`${botao}`}>Trocar e-mail</button>
                 </>}
-                {store.owner_id && <button type="button" disabled={ocupado} onClick={soltar} className={`${botao} bg-yellow-700 hover:bg-yellow-600 text-white`}>Soltar</button>}
-                {store.owner_id && atual && !protegido && <button type="button" disabled={ocupado} onClick={excluir} className={`${botao} bg-red-700 hover:bg-red-600 text-white`}>Excluir login</button>}
-                <button type="button" disabled={ocupado} onClick={() => abrir('novo')} className={`${botao} bg-green-600 hover:bg-green-700 text-white`}>{store.owner_id ? 'Novo login' : 'Criar login'}</button>
-                <button type="button" disabled={ocupado || carregando || livres.length === 0} onClick={() => abrir('existente')} className={`${botao} bg-gray-600 hover:bg-gray-500 text-white`}>Usar um que já existe</button>
+                {store.owner_id && <button type="button" disabled={ocupado} onClick={soltar} className={`${botao}`}>Soltar</button>}
+                {store.owner_id && atual && !protegido && <button type="button" disabled={ocupado} onClick={excluir} className={`${botao}`}>Excluir login</button>}
+                <button type="button" disabled={ocupado} onClick={() => abrir('novo')} className={`${botao}`}>{store.owner_id ? 'Novo login' : 'Criar login'}</button>
+                <button type="button" disabled={ocupado || carregando || livres.length === 0} onClick={() => abrir('existente')} className={`${botao}`}>Usar um que já existe</button>
             </div>
 
             {painel === 'senha' && (
                 <div className="space-y-2">{campoSenha}
-                    <div className="flex gap-2"><button type="button" disabled={ocupado} onClick={trocarSenha} className={`${botao} bg-blue-600 hover:bg-blue-700 text-white`}>Confirmar nova senha</button><button type="button" onClick={() => setPainel(null)} className={`${botao} bg-gray-700 text-gray-300`}>Cancelar</button></div>
+                    <div className="flex gap-2"><button type="button" disabled={ocupado} onClick={trocarSenha} className={`${botao}`}>Confirmar nova senha</button><button type="button" onClick={() => setPainel(null)} className={`${botao}`}>Cancelar</button></div>
                 </div>
             )}
             {painel === 'email' && (
                 <div className="space-y-2">
                     <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={campo} autoComplete="off" />
                     <p className="text-xs text-gray-500">A senha continua a mesma. O dono passa a entrar com o e-mail novo.</p>
-                    <div className="flex gap-2"><button type="button" disabled={ocupado} onClick={trocarEmail} className={`${botao} bg-blue-600 hover:bg-blue-700 text-white`}>Confirmar novo e-mail</button><button type="button" onClick={() => setPainel(null)} className={`${botao} bg-gray-700 text-gray-300`}>Cancelar</button></div>
+                    <div className="flex gap-2"><button type="button" disabled={ocupado} onClick={trocarEmail} className={`${botao}`}>Confirmar novo e-mail</button><button type="button" onClick={() => setPainel(null)} className={`${botao}`}>Cancelar</button></div>
                 </div>
             )}
             {painel === 'novo' && (
@@ -98,7 +98,7 @@ export const AcessoDoDono: React.FC<{ store: Store; onMudou: () => void }> = ({ 
                     {store.owner_id && <p className="text-xs text-yellow-300">Esta loja já tem login. Criar um novo troca o dono; o login antigo continua existindo, solto.</p>}
                     <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={campo} placeholder="Login (e-mail, pode ser de fachada)" autoComplete="off" />
                     {campoSenha}
-                    <div className="flex gap-2"><button type="button" disabled={ocupado} onClick={criar} className={`${botao} bg-green-600 hover:bg-green-700 text-white`}>Criar e ligar</button><button type="button" onClick={() => setPainel(null)} className={`${botao} bg-gray-700 text-gray-300`}>Cancelar</button></div>
+                    <div className="flex gap-2"><button type="button" disabled={ocupado} onClick={criar} className={`${botao}`}>Criar e ligar</button><button type="button" onClick={() => setPainel(null)} className={`${botao}`}>Cancelar</button></div>
                 </div>
             )}
             {painel === 'existente' && (
@@ -107,7 +107,7 @@ export const AcessoDoDono: React.FC<{ store: Store; onMudou: () => void }> = ({ 
                         <option value="">Escolha um login</option>
                         {livres.map(l => <option key={l.id} value={l.id}>{l.email}{l.lojas.length ? ` (já usado em: ${l.lojas.map(x => x.nome).join(', ')})` : ' (livre)'}</option>)}
                     </select>
-                    <div className="flex gap-2"><button type="button" disabled={ocupado || !escolhido} onClick={ligar} className={`${botao} bg-green-600 hover:bg-green-700 text-white`}>Ligar este login</button><button type="button" onClick={() => setPainel(null)} className={`${botao} bg-gray-700 text-gray-300`}>Cancelar</button></div>
+                    <div className="flex gap-2"><button type="button" disabled={ocupado || !escolhido} onClick={ligar} className={`${botao}`}>Ligar este login</button><button type="button" onClick={() => setPainel(null)} className={`${botao}`}>Cancelar</button></div>
                 </div>
             )}
 
@@ -117,7 +117,7 @@ export const AcessoDoDono: React.FC<{ store: Store; onMudou: () => void }> = ({ 
                 <div className="rounded-lg bg-gray-900 border border-gray-600 p-3 space-y-2">
                     <p className="text-xs text-gray-400">Dados para enviar ao cliente (somem quando você fechar esta janela):</p>
                     <pre className="text-sm text-gray-100 whitespace-pre-wrap break-all">{pacote}</pre>
-                    <button type="button" onClick={() => { navigator.clipboard?.writeText(pacote).catch(() => {}); setAviso({ tipo: 'ok', texto: 'Dados copiados.' }); }} className={`${botao} bg-gray-600 hover:bg-gray-500 text-white`}>Copiar dados</button>
+                    <button type="button" onClick={() => { navigator.clipboard?.writeText(pacote).catch(() => {}); setAviso({ tipo: 'ok', texto: 'Dados copiados.' }); }} className={`${botao}`}>Copiar dados</button>
                 </div>
             )}
         </div>
