@@ -2331,6 +2331,13 @@ export const fetchLojasShopping = async (): Promise<LojaShopping[]> => {
     return ((data || []) as LojaShopping[]).filter(l => !l.subscription_end_date || new Date(l.subscription_end_date).getTime() > agora);
 };
 
+/** Horario e tempo tipico de entrega das lojas do shopping (SQL 15). Se a funcao ainda nao existe, devolve vazio e a vitrine segue sem esses dados. */
+export const fetchInfoLojasShopping = async (): Promise<import('../utils/lojaAberta').InfoLojaShopping[]> => {
+    const { data, error } = await supabase.rpc('lojas_shopping_info');
+    if (error) { console.warn('[Vitrine] lojas_shopping_info indisponivel:', error.message); return []; }
+    return (data || []) as import('../utils/lojaAberta').InfoLojaShopping[];
+};
+
 /** Busca produtos pelo nome nas lojas do shopping (no máximo 12, só disponíveis). */
 export const buscarProdutosShopping = async (termo: string, lojaIds: string[]): Promise<ProdutoBusca[]> => {
     const t = termo.replace(/[%_,()]/g, ' ').trim();

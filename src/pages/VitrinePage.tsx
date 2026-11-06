@@ -4,7 +4,8 @@ import {
     MapPin, Search, UtensilsCrossed, Leaf, Pill, Tractor, Gift, PartyPopper,
     Plus, Home, ShoppingCart, User, ArrowRight, Megaphone,
 } from 'lucide-react';
-import { fetchLojasShopping, type LojaShopping } from '../services/supabaseService';
+import { fetchLojasShopping, fetchInfoLojasShopping, type LojaShopping } from '../services/supabaseService';
+import { statusDaLoja, type InfoLojaShopping } from '../utils/lojaAberta';
 
 // Nova home do shopping (desenho aprovado na rodada 4). Rota /vitrine, separada da /shopping atual.
 // Só mostra o que existe no banco: nome, logo, categoria e cidade da loja. Dono, tempo, taxa e
@@ -41,6 +42,7 @@ const Imagem: React.FC<{ loja: LojaShopping; className?: string }> = ({ loja, cl
 const VitrinePage: React.FC = () => {
     const [lojas, setLojas] = useState<LojaShopping[] | null>(null);
     const [texto, setTexto] = useState('');
+    const [infos, setInfos] = useState<Record<string, InfoLojaShopping>>({});
     const faixa = useRef<HTMLDivElement>(null);
     const campo = useRef<HTMLInputElement>(null);
     const lista = useRef<HTMLElement>(null);
@@ -56,12 +58,19 @@ const VitrinePage: React.FC = () => {
     }, []);
 
     useEffect(() => { fetchLojasShopping().then(setLojas).catch(() => setLojas([])); }, []);
+    useEffect(() => {
+        fetchInfoLojasShopping().then(lista => setInfos(Object.fromEntries(lista.map(i => [i.store_id, i])))).catch(() => { /* sem info: a vitrine mostra so o basico */ });
+    }, []);
 
     const termo = semAcento(texto.trim());
     const visiveis = useMemo(
         () => (lojas || []).filter(l => !termo || semAcento(`${l.name} ${l.categoria || ''}`).includes(termo)),
         [lojas, termo],
     );
+    const { abertas, fechadas } = useMemo(() => {
+        const comStatus = visiveis.map(l => ({ l, st: statusDaLoja(infos[l.id]), info: infos[l.id] }));
+        return { abertas: comStatus.filter(x => x.st.aberta !== false), fechadas: comStatus.filter(x => x.st.aberta === false) };
+    }, [visiveis, infos]);
     const destaques = useMemo(() => (lojas || []).slice(0, 2), [lojas]);
 
     // Rotação do banner: 5 s, para por 12 s quando o dedo toca
@@ -96,6 +105,30 @@ const VitrinePage: React.FC = () => {
             <span className="w-2.5 h-2.5 bg-[#FF6A1A] rotate-45 shadow-[0_0_6px_#FF6A1A]" />
             <h2 style={{ fontFamily: 'Anton, sans-serif' }} className="text-[26px] tracking-wide uppercase leading-none">{t}</h2>
         </div>
+    );
+
+    const cartao = (l: LojaShopping, st: ReturnType<typeof statusDaLoja>, info: InfoLojaShopping | undefined, fechada: boolean) => (
+        <Link key={l.id} to={`/${l.slug}`} style={corte(14)} className={`bg-[#F7EFE4] text-[#15121A] p-3 flex gap-3 border-2 border-[#F7EFE4] active:scale-[0.99] ${fechada ? 'opacity-70' : ''}`}>
+            <div style={corte(10)} className="relative w-24 h-24 shrink-0 overflow-hidden bg-black">
+                <Imagem loja={l} />
+                <div className={`absolute bottom-0 left-0 right-0 h-1 ${fechada ? 'bg-[#8A8294]' : 'bg-[#FF6A1A]'}`} />
+            </div>
+            <div className="min-w-0 flex-1 flex flex-col justify-between">
+                <div>
+                    <h3 style={{ fontFamily: 'Anton, sans-serif' }} className="text-[22px] tracking-wide uppercase leading-none">{l.name}</h3>
+                    <p className="text-[12px] text-[#55565B] mt-1">{[l.categoria, l.cidade].filter(Boolean).join(' • ')}</p>
+                    {(st.aberta !== null || (info?.tempo_tipico_min ?? 0) > 0) && (
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-[#6B6C72] mt-1.5 flex flex-wrap items-center gap-x-2">
+                            {st.aberta === true && <span style={corte(4)} className="px-1.5 py-0.5 bg-[#FF6A1A] text-black">Aberto agora</span>}
+                            {st.aberta === false && <span style={corte(4)} className="px-1.5 py-0.5 bg-[#8A8294] text-white">Fechada</span>}
+                            {st.detalhe && <span>{st.detalhe}</span>}
+                            {(info?.tempo_tipico_min ?? 0) > 0 && <span>• cerca de {info!.tempo_tipico_min} min</span>}
+                        </p>
+                    )}
+                </div>
+                <span style={{ ...corte(8), fontFamily: 'Anton, sans-serif' }} className="self-start px-3 py-1.5 bg-[#FF6A1A] text-black text-[13px] tracking-wider uppercase flex items-center gap-1">Ver cardápio <ArrowRight size={14} /></span>
+            </div>
+        </Link>
     );
 
     return (
@@ -207,7 +240,7 @@ const VitrinePage: React.FC = () => {
                         </section>
                     )}
 
-                    {/* Lojas */}
+                    {/* Lojas abertas */}
                     <section ref={lista} className="flex flex-col gap-3.5 scroll-mt-28">
                         {titulo(termo ? 'RESULTADO' : 'ABERTOS AGORA')}
                         <div className="flex flex-col gap-3.5 px-4">
@@ -215,23 +248,21 @@ const VitrinePage: React.FC = () => {
                             {lojas !== null && visiveis.length === 0 && (
                                 <p className="text-[13px] text-[#CFC7D6]">{termo ? 'Nenhuma loja com esse nome.' : 'Ainda não chegamos aqui. Em breve as primeiras lojas.'}</p>
                             )}
-                            {visiveis.map(l => (
-                                <Link key={l.id} to={`/${l.slug}`} style={corte(14)} className="bg-[#F7EFE4] text-[#15121A] p-3 flex gap-3 border-2 border-[#F7EFE4] active:scale-[0.99]">
-                                    <div style={corte(10)} className="relative w-24 h-24 shrink-0 overflow-hidden bg-black">
-                                        <Imagem loja={l} />
-                                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#FF6A1A]" />
-                                    </div>
-                                    <div className="min-w-0 flex-1 flex flex-col justify-between">
-                                        <div>
-                                            <h3 style={{ fontFamily: 'Anton, sans-serif' }} className="text-[22px] tracking-wide uppercase leading-none">{l.name}</h3>
-                                            <p className="text-[12px] text-[#55565B] mt-1">{[l.categoria, l.cidade].filter(Boolean).join(' • ')}</p>
-                                        </div>
-                                        <span style={{ ...corte(8), fontFamily: 'Anton, sans-serif' }} className="self-start px-3 py-1.5 bg-[#FF6A1A] text-black text-[13px] tracking-wider uppercase flex items-center gap-1">Ver cardápio <ArrowRight size={14} /></span>
-                                    </div>
-                                </Link>
-                            ))}
+                            {lojas !== null && visiveis.length > 0 && abertas.length === 0 && (
+                                <p className="text-[13px] text-[#CFC7D6]">Nenhuma loja aberta agora. Veja abaixo quando elas abrem.</p>
+                            )}
+                            {abertas.map(({ l, st, info }) => cartao(l, st, info, false))}
                         </div>
                     </section>
+
+                    {fechadas.length > 0 && (
+                        <section className="flex flex-col gap-3.5">
+                            {titulo('FECHADAS NO MOMENTO')}
+                            <div className="flex flex-col gap-3.5 px-4">
+                                {fechadas.map(({ l, st, info }) => cartao(l, st, info, true))}
+                            </div>
+                        </section>
+                    )}
 
                     {/* Convite ao lojista */}
                     <section className="px-4">
