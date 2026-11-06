@@ -380,6 +380,56 @@ const RaffleBanner: React.FC<{ settings: Partial<Settings> | null }> = ({ settin
     return null;
 };
 
+const PedeAkiInfoLoja: React.FC<{ settings: Partial<Settings> | null; loja: any; aberta: boolean; mensagem: string }> = ({ settings, loja, aberta, mensagem }) => {
+    const taxa = Number(settings?.deliveryFee) || 0;
+    const minimo = Number(settings?.minOrderValue) || 0;
+    return (
+        <section className="px-4 pt-3">
+            <div style={corteAki(14)} className="bg-[#F7EFE4] text-[#15121A] p-3 flex gap-3 border-2 border-[#F7EFE4]">
+                <div style={corteAki(10)} className="relative w-20 h-20 shrink-0 overflow-hidden bg-black flex items-center justify-center">
+                    {settings?.logoUrl ? <img src={settings.logoUrl} alt="" className="w-full h-full object-cover" /> : <RoadrunnerIcon />}
+                    <div className={`absolute bottom-0 left-0 right-0 h-1 ${aberta ? 'bg-[#FF6A1A]' : 'bg-[#8A8294]'}`} />
+                </div>
+                <div className="min-w-0 flex-1 flex flex-col justify-between">
+                    <div>
+                        <h2 className="font-display text-[22px] tracking-wide uppercase leading-none">{nomeDaLoja()}</h2>
+                        {loja?.categoria && <p className="text-[12px] text-[#55565B] mt-1">{[loja.categoria, loja.cidade].filter(Boolean).join(' • ')}</p>}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold uppercase tracking-wide text-[#6B6C72]">
+                        <span style={corteAki(4)} className={`px-1.5 py-0.5 ${aberta ? 'bg-[#FF6A1A] text-black' : 'bg-[#8A8294] text-white'}`}>{aberta ? 'Aberto agora' : 'Fechada'}</span>
+                        {!aberta && mensagem && <span>{mensagem}</span>}
+                        {taxa > 0 && <span>Taxa R$ {taxa.toFixed(2).replace('.', ',')}</span>}
+                        {minimo > 0 && <span>Mínimo R$ {minimo.toFixed(2).replace('.', ',')}</span>}
+                    </div>
+                </div>
+            </div>
+        </section>
+    );
+};
+
+const PedeAkiRodape: React.FC<{ itens: number; total: number; onCarrinho: () => void; onBusca: () => void; onPerfil: () => void; onInicio: () => void }> = ({ itens, total, onCarrinho, onBusca, onPerfil, onInicio }) => (
+    <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', background: '#15121A' }}>
+        {itens > 0 && (
+            <div style={corteAki(10)} className="mx-2 mt-2 mb-1 px-3.5 py-2 border-2 border-white bg-[#15121A] flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                    <div style={corteAki(6)} className="w-8 h-8 flex items-center justify-center bg-surface text-text-light"><LucideShoppingCart size={18} /></div>
+                    <div>
+                        <p className="text-[10px] uppercase text-text-dark font-bold tracking-widest leading-none">{itens} {itens === 1 ? 'item' : 'itens'}</p>
+                        <p className="font-display text-[18px] leading-tight text-text-light">R$ {total.toFixed(2).replace('.', ',')}</p>
+                    </div>
+                </div>
+                <button onClick={onCarrinho} style={corteAki(8)} className="px-4 py-2 bg-primary text-black font-display text-[14px] tracking-wider uppercase active:scale-[0.97]">VER CARRINHO</button>
+            </div>
+        )}
+        <nav className="border-t border-text-light/10 px-2 py-1 flex items-center justify-around">
+            <button onClick={onInicio} className="flex flex-col items-center py-1 text-text-dark font-medium"><LucideArrowLeft size={20} /><span className="text-[10px] tracking-wider mt-0.5">Pede Aki</span></button>
+            <button onClick={onBusca} className="flex flex-col items-center py-1 text-text-dark font-medium"><LucideSearch size={20} /><span className="text-[10px] tracking-wider mt-0.5">Busca</span></button>
+            <button onClick={onCarrinho} className="flex flex-col items-center py-1 text-primary font-bold"><LucideShoppingCart size={20} /><span className="text-[10px] tracking-wider mt-0.5">Carrinho</span></button>
+            <button onClick={onPerfil} className="flex flex-col items-center py-1 text-text-dark font-medium"><Users size={20} /><span className="text-[10px] tracking-wider mt-0.5">Perfil</span></button>
+        </nav>
+    </div>
+);
+
 const PedeAkiHeader: React.FC<{ settings: Partial<Settings> | null; onBack: (() => void) | null }> = ({ settings, onBack }) => (
     <header className="bg-background w-full shrink-0 border-b border-primary/20">
         <div className="flex items-center gap-2 px-3 py-2">
@@ -432,13 +482,30 @@ const Header: React.FC<{ onAdminClick: () => void; onMotoboyClick: () => void; o
     </header>
 );
 
-const CategoryNav: React.FC<{ categories: Category[] }> = ({ categories }) => {
+const corteAki = (px: number): React.CSSProperties => ({
+    clipPath: `polygon(${px}px 0%, calc(100% - ${px}px) 0%, 100% ${px}px, 100% calc(100% - ${px}px), calc(100% - ${px}px) 100%, ${px}px 100%, 0% calc(100% - ${px}px), 0% ${px}px)`,
+});
+
+const CategoryNav: React.FC<{ categories: Category[]; pedeAki?: boolean }> = ({ categories, pedeAki = false }) => {
     const scrollToCategory = (categoryId: number) => {
         const element = document.getElementById(`category-${categoryId}`);
         if (element) {
             element.scrollIntoView({ behavior: 'smooth' });
         }
     };
+    if (pedeAki) {
+        return (
+            <nav id="tour-categories" className="bg-background py-2 border-b border-primary/20">
+                <div className="px-3 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+                    {categories.map(category => (
+                        <button key={category.id} onClick={() => scrollToCategory(category.id)} style={corteAki(6)} className="shrink-0 px-3 py-1.5 bg-surface text-text-light text-[11px] font-bold uppercase tracking-wider whitespace-nowrap border border-text-light/10 active:bg-primary active:text-black">
+                            {category.name}
+                        </button>
+                    ))}
+                </div>
+            </nav>
+        );
+    }
     return (
         <nav id="tour-categories" className="bg-background py-1 border-b-2 border-surface shadow-sm">
             <div className="container mx-auto px-4 flex space-x-2 overflow-x-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -457,6 +524,22 @@ const CategoryNav: React.FC<{ categories: Category[] }> = ({ categories }) => {
     );
 };
 
+const PedeAkiBusca: React.FC<{ value: string; onChange: (val: string) => void }> = ({ value, onChange }) => (
+    <div id="tour-search" className="bg-background px-3 py-2 w-full shrink-0">
+        <label style={corteAki(6)} className="flex items-center bg-surface border border-text-light/15 focus-within:border-primary">
+            <LucideSearch className="ml-3 shrink-0 text-text-light" size={18} />
+            <input
+                id="busca-cardapio"
+                type="search"
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder="Buscar no cardápio..."
+                className="w-full bg-transparent py-2.5 px-2.5 text-[14px] text-text-light placeholder:text-text-dark border-none outline-none focus:ring-0"
+            />
+        </label>
+    </div>
+);
+
 const ProductSearchBar: React.FC<{ value: string; onChange: (val: string) => void }> = ({ value, onChange }) => (
     <div id="tour-search" className="bg-background px-3 py-1 border-b border-text-light/10 z-30 w-full overflow-hidden shrink-0 transition-colors duration-300">
         <div className="relative w-full">
@@ -474,7 +557,7 @@ const ProductSearchBar: React.FC<{ value: string; onChange: (val: string) => voi
 
 
 
-const MenuItemCard: React.FC<{ item: MenuItem; onAddItem: (item: MenuItem) => void }> = ({ item, onAddItem }) => {
+const MenuItemCard: React.FC<{ item: MenuItem; onAddItem: (item: MenuItem) => void; pedeAki?: boolean }> = ({ item, onAddItem, pedeAki = false }) => {
     const [justAdded, setJustAdded] = useState(false);
     const isSoldOut = !item.isAvailable;
     const isButtonDisabled = isSoldOut || justAdded;
@@ -487,8 +570,42 @@ const MenuItemCard: React.FC<{ item: MenuItem; onAddItem: (item: MenuItem) => vo
         setTimeout(() => setJustAdded(false), 1000);
     };
 
+    if (pedeAki) {
+        return (
+            <div
+                onClick={() => !isSoldOut && onAddItem(item)}
+                style={corteAki(14)}
+                className={`bg-[#F7EFE4] text-[#15121A] p-2.5 flex gap-3 border-2 border-[#F7EFE4] cursor-pointer active:scale-[0.99] ${isSoldOut ? 'opacity-60 cursor-not-allowed' : ''}`}
+            >
+                {item.image && (
+                    <div style={corteAki(10)} className="relative w-24 h-24 shrink-0 overflow-hidden bg-black">
+                        <ImagemProduto src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                        <div className={`absolute bottom-0 left-0 right-0 h-1 ${isSoldOut ? 'bg-[#8A8294]' : 'bg-[#FF6A1A]'}`} />
+                    </div>
+                )}
+                <div className="min-w-0 flex-1 flex flex-col justify-between gap-1.5">
+                    <div>
+                        <h3 className="font-display text-[19px] tracking-wide uppercase leading-none">{sanitizeHtmlEntities(item.name)}</h3>
+                        {item.description && <p className="text-[12px] text-[#55565B] leading-snug line-clamp-2 mt-1">{sanitizeHtmlEntities(item.description)}</p>}
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                        <PrecoDoItem item={item} className="font-display text-[22px] leading-none text-[#15121A] whitespace-nowrap" />
+                        <button
+                            onClick={handleAddClick}
+                            disabled={isButtonDisabled}
+                            style={corteAki(8)}
+                            className={`px-3.5 py-2 font-display text-[14px] tracking-wider uppercase active:scale-[0.97] ${isSoldOut ? 'bg-[#8A8294] text-white' : justAdded ? 'bg-[#15121A] text-white' : 'bg-[#FF6A1A] text-black'}`}
+                        >
+                            {isSoldOut ? 'Esgotado' : justAdded ? 'Adicionado' : 'Pedir'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div 
+        <div
             onClick={() => !isSoldOut && onAddItem(item)}
             className={`group bg-surface rounded-2xl overflow-hidden shadow-lg flex flex-col h-full border border-text-light/5 hover:border-primary/50 transition-all duration-300 transform hover:-translate-y-1 hover:shadow-2xl cursor-pointer ${isSoldOut ? 'opacity-75 cursor-not-allowed' : ''}`}
         >
@@ -534,8 +651,25 @@ const MenuItemCard: React.FC<{ item: MenuItem; onAddItem: (item: MenuItem) => vo
     );
 };
 
-const MenuSection: React.FC<{ category: Category; items: MenuItem[]; onAddItem: (item: MenuItem) => void; isFirst?: boolean }> = ({ category, items, onAddItem, isFirst }) => {
+const MenuSection: React.FC<{ category: Category; items: MenuItem[]; onAddItem: (item: MenuItem) => void; isFirst?: boolean; pedeAki?: boolean }> = ({ category, items, onAddItem, isFirst, pedeAki = false }) => {
     if (items.length === 0) return null;
+    if (pedeAki) {
+        return (
+            <section id={`category-${category.id}`} className="px-4 pt-5 scroll-mt-40">
+                <div className="flex items-center gap-2 mb-3">
+                    <span className="w-2.5 h-2.5 bg-primary rotate-45 shadow-[0_0_6px_#FF6A1A]" />
+                    <h2 className="font-display text-[26px] tracking-wide uppercase leading-none text-text-light">{category.name}</h2>
+                </div>
+                <div className="flex flex-col gap-3">
+                    {items.map((item, index) => (
+                        <div key={item.id} id={isFirst && index === 0 ? 'tour-product-first' : undefined}>
+                            <MenuItemCard item={item} onAddItem={onAddItem} pedeAki />
+                        </div>
+                    ))}
+                </div>
+            </section>
+        );
+    }
     return (
         <section id={`category-${category.id}`} className="container mx-auto px-4 py-4 border-b border-surface last:border-0 scroll-mt-64 md:scroll-mt-48">
             <h2 className="text-2xl font-display text-primary mb-4">{category.name}</h2>
@@ -2027,7 +2161,7 @@ const CustomerPage: React.FC<{ pedeAki?: boolean }> = ({ pedeAki = false }) => {
 
     // Lifted State
     const [customerName, setCustomerName] = useState('');
-    const [phone, setPhone] = useState('');
+    const [phone, setPhone] = useState(() => (pedeAki ? telefoneDoAparelho() : ''));
     const [address, setAddress] = useState('');
     const [houseNumber, setHouseNumber] = useState('');
     const [referencePoint, setReferencePoint] = useState('');
@@ -2109,7 +2243,7 @@ const CustomerPage: React.FC<{ pedeAki?: boolean }> = ({ pedeAki = false }) => {
     const [showRepeatSuccess, setShowRepeatSuccess] = useState(false);
     const [repeatOrderId, setRepeatOrderId] = useState<string | undefined>(undefined);
 
-    const handleHeroPhoneSubmit = async (phoneInput: string) => {
+    const handleHeroPhoneSubmit = async (phoneInput: string, silencioso = false) => {
         console.log("handleHeroPhoneSubmit called with:", phoneInput);
         if (!currentStore) {
             console.error("handleHeroPhoneSubmit: No currentStore found!");
@@ -2179,7 +2313,7 @@ const CustomerPage: React.FC<{ pedeAki?: boolean }> = ({ pedeAki = false }) => {
                     if (order.changeFor) setChangeFor(order.changeFor.toString());
                 }
 
-                setShowRecognitionModal(true);
+                if (!silencioso) setShowRecognitionModal(true);
             } else {
                 // New Customer: Clear previous data!
                 setCustomerName('');
@@ -2193,7 +2327,7 @@ const CustomerPage: React.FC<{ pedeAki?: boolean }> = ({ pedeAki = false }) => {
                 setRecognizedCustomer(null);
 
                 // Show Welcome Modal instead of opening cart directly
-                setShowNewCustomerModal(true);
+                if (!silencioso) setShowNewCustomerModal(true);
             }
         } catch (error) {
             console.error("Error searching customer:", error);
@@ -2201,6 +2335,14 @@ const CustomerPage: React.FC<{ pedeAki?: boolean }> = ({ pedeAki = false }) => {
             setIsSearchingCustomer(false);
         }
     };
+
+    // Loja de comissao: se o cliente ja digitou o telefone no Perfil, reconhece em silencio (sem janelas).
+    useEffect(() => {
+        if (!pedeAki || !currentStore?.id) return;
+        const guardado = telefoneDoAparelho();
+        if (guardado) handleHeroPhoneSubmit(guardado, true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pedeAki, currentStore?.id]);
 
     // Sync payment method with last order when it loads
     useEffect(() => {
@@ -2670,6 +2812,11 @@ const CustomerPage: React.FC<{ pedeAki?: boolean }> = ({ pedeAki = false }) => {
     };
 
     const cartItemCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
+    const cartTotalBarra = useMemo(() => cart.reduce((sum, item) => {
+        const extras = item.selectedAddons.reduce((s, a) => s + (Number(a.price) || 0), 0);
+        const combo = item.isCombo ? (Number(settings?.comboPrice) || 0) : 0;
+        return sum + ((Number(item.price) || 0) + extras + combo) * item.quantity;
+    }, 0), [cart, settings]);
 
 
 
@@ -2703,31 +2850,43 @@ const CustomerPage: React.FC<{ pedeAki?: boolean }> = ({ pedeAki = false }) => {
     }
 
     return (
-        <div className="bg-background text-text-light min-h-screen">
+        <div className={pedeAki ? 'bg-background text-text-light min-h-screen max-w-[430px] mx-auto relative border-x border-text-light/10' : 'bg-background text-text-light min-h-screen'}>
 
             <RewardCelebrationModal isOpen={showRewardCelebration} onClose={() => setShowRewardCelebration(false)} onRedeem={handleRedeemReward} />
-            <div className="fixed top-0 left-0 right-0 z-40 bg-background shadow-md overflow-hidden">
-                <StoreStatusBanner isOpen={isStoreOpen} message={statusMessage} />
+            <div className={pedeAki ? 'fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-background shadow-md overflow-hidden' : 'fixed top-0 left-0 right-0 z-40 bg-background shadow-md overflow-hidden'}>
+                {!pedeAki && <StoreStatusBanner isOpen={isStoreOpen} message={statusMessage} />}
                 {pedeAki
                     ? <PedeAkiHeader settings={settings} onBack={window.location.pathname === '/' ? null : () => navigate('/')} />
                     : <Header onAdminClick={() => navigate('admin')} onMotoboyClick={() => navigate('entregador')} onWaiterClick={() => navigate('garcom')} settings={settings} onToggleTheme={toggleTheme} currentTheme={theme} />}
                 <DiscountBanner settings={settings} />
                 {!pedeAki && <RaffleBanner settings={settings} />}
                 {!pedeAki && (isInstallable || isIOS) && <PWAInstallBanner onInstall={install} isIOS={isIOS} />}
-                <CustomerRecognitionBar onPhoneSubmit={handleHeroPhoneSubmit} isLoading={isSearchingCustomer} pedeAki={pedeAki} />
-                <ProductSearchBar value={searchTerm} onChange={setSearchTerm} />
-                {!searchTerm && <CategoryNav categories={menu.categories} />}
+                {!pedeAki && <CustomerRecognitionBar onPhoneSubmit={handleHeroPhoneSubmit} isLoading={isSearchingCustomer} pedeAki={pedeAki} />}
+                {pedeAki ? <PedeAkiBusca value={searchTerm} onChange={setSearchTerm} /> : <ProductSearchBar value={searchTerm} onChange={setSearchTerm} />}
+                {!searchTerm && <CategoryNav categories={menu.categories} pedeAki={pedeAki} />}
             </div>
 
-            <DraggableCart 
-                onClick={() => setIsCartOpen(true)} 
-                itemCount={cartItemCount} 
-                isAnimating={isCartAnimating} 
-            />
+            {pedeAki ? (
+                <PedeAkiRodape
+                    itens={cartItemCount}
+                    total={cartTotalBarra}
+                    onCarrinho={() => setIsCartOpen(true)}
+                    onBusca={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); document.getElementById('busca-cardapio')?.focus(); }}
+                    onPerfil={() => navigate('/perfil')}
+                    onInicio={() => navigate('/')}
+                />
+            ) : (
+                <DraggableCart
+                    onClick={() => setIsCartOpen(true)}
+                    itemCount={cartItemCount}
+                    isAnimating={isCartAnimating}
+                />
+            )}
 
             {/* Fixed Height Spacer - Safest for mobile performance */}
-            <div className={pedeAki ? 'h-[205px] md:h-[200px]' : 'h-[260px] md:h-[220px]'}></div>
-            <main className="pb-32 px-4 relative z-0 overflow-x-hidden w-full max-w-full">
+            <div className={pedeAki ? 'h-[150px]' : 'h-[260px] md:h-[220px]'}></div>
+            <main className={pedeAki ? 'pb-44 relative z-0 overflow-x-hidden w-full max-w-full' : 'pb-32 px-4 relative z-0 overflow-x-hidden w-full max-w-full'}>
+                {pedeAki && !searchTerm && <PedeAkiInfoLoja settings={settings} loja={currentStore} aberta={isStoreOpen} mensagem={statusMessage} />}
                 {promotions.length > 0 && !searchTerm && (
                     <section id="category--1" className="w-full py-1 relative z-0 overflow-hidden">
                          {/* 3D Carousel Component - Reduced height to minimize yellow gap */}
@@ -2753,6 +2912,7 @@ const CustomerPage: React.FC<{ pedeAki?: boolean }> = ({ pedeAki = false }) => {
                         })) as any}
                         onAddItem={(item) => handleOpenItemModal(item as any)}
                         isFirst={true}
+                        pedeAki={pedeAki}
                     />
                 )}
                 {menu.categories.map((category, index) => {
@@ -2773,6 +2933,7 @@ const CustomerPage: React.FC<{ pedeAki?: boolean }> = ({ pedeAki = false }) => {
                             items={filteredItems}
                             onAddItem={handleOpenItemModal}
                             isFirst={index === 0}
+                            pedeAki={pedeAki}
                         />
                     );
                 })}
