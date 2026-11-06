@@ -574,6 +574,8 @@ export interface LojaFinanceiro {
   limite_debito: number;
   /** Débito atual (R$) de comissão de pedidos em dinheiro. Mantido pelo servidor. */
   debito_dinheiro: number;
+  /** Carteira (walletId) da loja no Asaas; vazio = sem pagamento online. */
+  asaas_wallet_id?: string | null;
 }
 
 /** Padrões da plataforma, copiados para cada loja nova (tabela plataforma_config, uma linha). */

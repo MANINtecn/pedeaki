@@ -477,6 +477,17 @@ export const updateOrderStatus = async (orderId: string, status: Order['status']
         .select(ORDER_COLUMNS);
     if (error) throw error;
 
+    // Pedido cancelado que ja foi pago online (PIX): pede o estorno. O servidor so age se houver pagamento a devolver.
+    if (status === 'Cancelado') {
+        (async () => {
+            try {
+                const token = (await supabase.auth.getSession()).data.session?.access_token;
+                if (!token) return;
+                await fetch('/api/asaas-estornar', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ order_id: orderId }) });
+            } catch (e) { console.warn('[estorno] nao foi possivel pedir o estorno agora:', e); }
+        })();
+    }
+
     const updatedOrders = data ? data.map(mapOrderFromDB) : [];
 
     // Estorno de pontos ao cancelar -- regra fechada com o Ikarus,

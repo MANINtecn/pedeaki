@@ -377,7 +377,7 @@ export const LojasSecao: React.FC = () => {
                             {editForm.tipo === 'comissao' ? (
                                 <div className="rounded-lg border border-gray-700 p-4 space-y-3">
                                     <p className="text-sm font-bold text-orange-300">Condições de comissão</p>
-                                    <CamposFinanceiros v={editForm.fin} onChange={fin => setEditForm({ ...editForm, fin })} comDebito />
+                                    <CamposFinanceiros v={editForm.fin} onChange={fin => setEditForm({ ...editForm, fin })} comDebito comCarteira />
                                     <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
                                         <input type="checkbox" checked={editForm.aceita_dinheiro} onChange={e => setEditForm({ ...editForm, aceita_dinheiro: e.target.checked })} className="h-4 w-4" />
                                         Aceitar pagamento em dinheiro (desmarque para bloquear a opção Dinheiro no checkout)

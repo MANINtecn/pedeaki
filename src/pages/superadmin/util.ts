@@ -7,6 +7,8 @@ export interface FormFinanceiro {
     repassa_taxa_pagamento: boolean;
     limite_debito: number;
     debito_dinheiro: number;
+    /** Carteira (walletId) da loja no Asaas: recebe o repasse do PIX online. Vazio = a loja ainda nao aceita pagamento online. */
+    asaas_wallet_id?: string | null;
 }
 export const FIN_PADRAO: FormFinanceiro = { comissao_pct_propria: 8, comissao_pct_app: 20, comissao_fixa: 0.99, repassa_taxa_pagamento: true, limite_debito: 100, debito_dinheiro: 0 };
 
