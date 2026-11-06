@@ -808,6 +808,8 @@ const AdminPage = () => {
         const subscription = supabase
             .channel('public:orders')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders', filter: `store_id=eq.${currentStore?.id}` }, (payload) => {
+                // Pedido online ainda sem pagamento: o lojista nao ve, nao toca e nao imprime. Aparece quando o PIX confirma (UPDATE).
+                if ((payload.new as any)?.status === 'Aguardando pagamento') return;
                 console.log('New order received via real-time:', payload.new);
                 
                 // Play sound for all new orders IMMEDIATELY
@@ -854,10 +856,23 @@ const AdminPage = () => {
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `store_id=eq.${currentStore?.id}` }, async (payload) => {
                 console.log(`[RealTime] UPDATE received for #${payload.new.id}. Daily: ${payload.new.daily_order_number}, Status: ${payload.new.status}`);
                 
+                // Pedido online que ainda nao foi pago ou venceu: invisivel para o lojista.
+                if (['Aguardando pagamento', 'Expirado'].includes((payload.new as any)?.status)) return;
+
                 const updatedOrder = mapOrderFromDB(payload.new);
                 
                 // ROBUST LOOP PROTECTION: Compare against LOCAL state
                 const localOrder = ordersRef.current.find(o => o.id === updatedOrder.id);
+
+                // Pedido online que acabou de ser pago (PIX confirmado): para o lojista e um pedido novo (som, aviso e lista).
+                if (!localOrder && (payload.new as any)?.payment_status === 'pago' && updatedOrder.status === 'Novo') {
+                    const raw = payload.new as any;
+                    if (estacaoDeveTocar({ orderType: raw?.order_type, origin: raw?.origin, tableNumber: raw?.table_number, deliveryFee: raw?.delivery_fee }) && notificationSound.current) {
+                        tocarSirene((settingsRef.current?.sireneTipo as TipoSirene) || 'sino', Number(settingsRef.current?.sireneVolume) || 3);
+                    }
+                    showNotify('Novo pedido recebido (PIX pago)!', 'success');
+                    refreshOrdersOnly();
+                }
 
                 if (localOrder) {
                     const itemsChanged = JSON.stringify(updatedOrder.items) !== JSON.stringify(localOrder.items);

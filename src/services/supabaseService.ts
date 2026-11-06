@@ -1116,7 +1116,16 @@ export const garcomLogin = async (storeId: string, pin: string): Promise<string>
 };
 const dosGarcom = (storeId?: string) => (sessaoGarcom && (!storeId || storeId === sessaoGarcom.storeId)) ? sessaoGarcom : null;
 
-export const createOrder = async (order: any) => {
+// Efeitos que so valem depois do pedido pago (aviso por webhook, pontos de fidelidade, nota): ficam guardados
+// ate o PIX confirmar. Se a pessoa fechar a pagina antes, o pedido continua valido, so esses extras nao rodam.
+const efeitosDoPedidoOnline = new Map<string, () => void>();
+export const executarEfeitosDoPedidoOnline = (orderId: string) => {
+    const f = efeitosDoPedidoOnline.get(orderId);
+    efeitosDoPedidoOnline.delete(orderId);
+    if (f) f();
+};
+
+export const createOrder = async (order: any, opcoes?: { online?: boolean }) => {
     const dbOrder = mapOrderToDB(order);
     
     // Initialize status history for new orders if not present
@@ -1137,6 +1146,11 @@ export const createOrder = async (order: any) => {
         const r = await supabase.rpc('garcom_gravar_pedido', { p_store: garcom.storeId, p_token: garcom.token, p_id: null, p: corpo });
         if (r.error) throw new Error(r.error.message);
         data = r.data;
+    } else if (doSite && opcoes?.online) {
+        // Pagamento online (PIX): o pedido nasce "Aguardando pagamento". Sem plano B: se a loja nao aceita, o erro sobe.
+        const r = await supabase.rpc('criar_pedido_online', { p: dbOrder });
+        if (r.error) throw new Error(r.error.message || 'Não foi possível criar o pedido.');
+        data = r.data;
     } else if (doSite) {
         const r = await supabase.rpc('criar_pedido_publico', { p: dbOrder });
         if (!r.error) data = r.data;
@@ -1155,6 +1169,7 @@ export const createOrder = async (order: any) => {
 
     const frontendOrder = mapOrderFromDB(data);
 
+    const efeitosDoPedido = () => {
     // Trigger Webhook for New Order (Non-blocking)
     if (order.store_id) {
         fetchPublicSettings(order.store_id).then(settings => {
@@ -1185,6 +1200,9 @@ export const createOrder = async (order: any) => {
             console.error('[NFC-e] Erro ao disparar emissao (pedido segue normal):', e)
         );
     }
+    };
+    if (opcoes?.online && frontendOrder.id) { efeitosDoPedidoOnline.set(String(frontendOrder.id), efeitosDoPedido); return frontendOrder; }
+    efeitosDoPedido();
 
     return frontendOrder;
 };

@@ -11,7 +11,7 @@ import type { LoyaltyRewardItem } from '../types';
 // Types (Inlined for stability)
 type PaymentMethod = 'Dinheiro' | 'Cartão' | 'PIX';
 type OrderType = 'Entrega' | 'Balcão' | 'Retirada';
-type OrderStatus = 'Novo' | 'Em Produção' | 'A Caminho' | 'No Portão' | 'Entregue' | 'Cancelado' | 'Conta Solicitada';
+type OrderStatus = 'Aguardando pagamento' | 'Expirado' | 'Novo' | 'Em Produção' | 'A Caminho' | 'No Portão' | 'Entregue' | 'Cancelado' | 'Conta Solicitada';
 
 interface Customer {
     id: string;

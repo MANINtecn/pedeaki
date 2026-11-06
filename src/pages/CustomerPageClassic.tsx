@@ -10,7 +10,7 @@ import {
 import { 
     rateOrder, fetchPublicSettings, fetchActivePromotions, createOrder, triggerWebhook,
     fetchMenuForCustomer, fetchCustomerByPhone, fetchLastOrderByPhone, fetchCustomerLoyaltyHistory,
-    concluirResgateDoPedido, verificarResgatePendente, resgateEfetivo, upsertCustomer, fetchDynamicDeliveryFee, fetchDeliveryZones, zonaDoEndereco, canonicalPhone
+    concluirResgateDoPedido, executarEfeitosDoPedidoOnline, verificarResgatePendente, resgateEfetivo, upsertCustomer, fetchDynamicDeliveryFee, fetchDeliveryZones, zonaDoEndereco, canonicalPhone
 } from '../services/supabaseService';
 import { 
     ShoppingCart as LucideShoppingCart, X as LucideX, 
@@ -18,6 +18,7 @@ import {
     Users, Search as LucideSearch, ArrowRight as LucideArrowRight,
     Sun, Moon, Trash2 as LucideTrash, ArrowLeft as LucideArrowLeft
 } from 'lucide-react';
+import { PagamentoPixOnline } from '../components/PagamentoPixOnline';
 import { telefoneDoAparelho, guardarTelefoneDoAparelho, telefoneBonito } from '../utils/telefoneCliente';
 import { temaDaCategoria } from '../utils/temaDaLoja';
 import { normalizeString } from '../utils/searchUtils';
@@ -995,6 +996,7 @@ const SideCart: React.FC<{
         const [isSubmitting, setIsSubmitting] = useState(false);
         const [showSuccess, setShowSuccess] = useState(false);
         const [lastOrderId, setLastOrderId] = useState<string | undefined>(undefined);
+        const [pagandoOnline, setPagandoOnline] = useState<{ pedido: { id: string; phone: string; total: number }; resgate: any; desconto: number; telefoneOriginal: string; criado: any } | null>(null);
         const [submitMessage, setSubmitMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
         const minOrderValue = settings?.minOrderValue ?? MIN_ORDER_VALUE;
 
@@ -1120,7 +1122,25 @@ const SideCart: React.FC<{
                     return;
                 }
 
-                const createdOrder = await createOrder(orderData);
+                // PIX em loja de comissao: tenta o pagamento online (pedido fica aguardando ate o PIX cair).
+                // Se a loja ainda nao tem carteira no Asaas, segue o PIX de sempre (chave e comprovante).
+                const quereOnline = currentStore?.modelo === 'comissao' && paymentMethod === 'PIX';
+                let createdOrder: any;
+                if (quereOnline) {
+                    try {
+                        createdOrder = await createOrder(orderData, { online: true });
+                    } catch (erroOnline: any) {
+                        if (/nao aceita pagamento online/i.test(erroOnline?.message || '')) createdOrder = await createOrder(orderData);
+                        else throw erroOnline;
+                    }
+                } else {
+                    createdOrder = await createOrder(orderData);
+                }
+
+                if (createdOrder && createdOrder.status === 'Aguardando pagamento') {
+                    setPagandoOnline({ pedido: { id: String(createdOrder.id), phone: finalPhone, total: Number(createdOrder.total) || total }, resgate: resgateDoPedido, desconto: orderDiscount, telefoneOriginal: phone, criado: createdOrder });
+                    return;
+                }
 
                 if (createdOrder) {
                     // Start Loyalty Redemption if discount was used OR if there is a pending item reward
@@ -1158,6 +1178,26 @@ const SideCart: React.FC<{
                 setSubmitMessage({ type: 'error', text: 'Erro ao enviar pedido. Tente novamente.' });
             } finally {
                 setIsSubmitting(false);
+            }
+        };
+
+        // PIX confirmado: agora sim o pedido vale (resgate de pontos, webhook e carrinho limpo).
+        const aoPagarOnline = async () => {
+            const dados = pagandoOnline;
+            setPagandoOnline(null);
+            if (!dados) return;
+            executarEfeitosDoPedidoOnline(dados.pedido.id);
+            if (dados.desconto > 0 || (pendingReward && pendingReward.type === 'item')) {
+                try {
+                    await concluirResgateDoPedido({ pendingReward: dados.resgate, descontoAplicado: dados.desconto, phone: dados.pedido.phone, storeId, orderId: dados.pedido.id });
+                } catch (erroResgate) { console.error('Erro no resgate de fidelidade (pedido ja pago):', erroResgate); }
+            }
+            onClearCart();
+            if (setOrderDiscount) setOrderDiscount(0);
+            setLastOrderId(dados.pedido.id);
+            setShowSuccess(true);
+            if (settings?.webhookNewOrderUrl) {
+                triggerWebhook(settings.webhookNewOrderUrl, { event: 'new_order', ...dados.criado, status: 'Novo', customer_phone: dados.telefoneOriginal });
             }
         };
 
@@ -1442,6 +1482,7 @@ const SideCart: React.FC<{
                     )}
                 </div>
                 <SuccessModal isOpen={showSuccess} onClose={handleCloseSuccess} orderId={lastOrderId} isRatingEnabled={settings?.isRatingEnabled ?? true} />
+                {pagandoOnline && <PagamentoPixOnline pedido={pagandoOnline.pedido} onPago={aoPagarOnline} onVoltar={() => setPagandoOnline(null)} />}
             </>
         );
     };

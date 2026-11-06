@@ -263,7 +263,7 @@ export interface NotaFiscal {
 }
 
 export type PaymentMethod = 'Dinheiro' | 'Cartão' | 'PIX';
-export type OrderStatus = 'Novo' | 'Em Produção' | 'A Caminho' | 'No Portão' | 'Entregue' | 'Cancelado' | 'Conta Solicitada';
+export type OrderStatus = 'Aguardando pagamento' | 'Expirado' | 'Novo' | 'Em Produção' | 'A Caminho' | 'No Portão' | 'Entregue' | 'Cancelado' | 'Conta Solicitada';
 
 export interface Order {
   id?: string;
