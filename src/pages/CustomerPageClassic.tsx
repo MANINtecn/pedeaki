@@ -16,8 +16,9 @@ import {
     ShoppingCart as LucideShoppingCart, X as LucideX, 
     Plus as LucidePlus, Check as LucideCheck, Minus as LucideMinus, Bike, Star,
     Users, Search as LucideSearch, ArrowRight as LucideArrowRight,
-    Sun, Moon, Trash2 as LucideTrash
+    Sun, Moon, Trash2 as LucideTrash, ArrowLeft as LucideArrowLeft
 } from 'lucide-react';
+import { telefoneDoAparelho, guardarTelefoneDoAparelho, telefoneBonito } from '../utils/telefoneCliente';
 import { normalizeString } from '../utils/searchUtils';
 import introJs from 'intro.js';
 import { MIN_ORDER_VALUE } from '../constants';
@@ -378,6 +379,23 @@ const RaffleBanner: React.FC<{ settings: Partial<Settings> | null }> = ({ settin
 
     return null;
 };
+
+const PedeAkiHeader: React.FC<{ settings: Partial<Settings> | null; onBack: (() => void) | null }> = ({ settings, onBack }) => (
+    <header className="bg-background w-full shrink-0 border-b border-primary/20">
+        <div className="flex items-center gap-2 px-3 py-2">
+            {onBack && (
+                <button onClick={onBack} aria-label="Voltar ao Pede Aki" className="shrink-0 p-1.5 rounded-md bg-surface text-text-light active:scale-95">
+                    <LucideArrowLeft className="w-5 h-5" />
+                </button>
+            )}
+            <div className="w-9 h-9 shrink-0 overflow-hidden rounded-md bg-surface flex items-center justify-center">
+                {settings?.logoUrl ? <img src={settings.logoUrl} alt="" className="w-full h-full object-cover" /> : <RoadrunnerIcon />}
+            </div>
+            <h1 className="min-w-0 flex-1 truncate font-display text-xl tracking-wide uppercase text-text-light leading-none">{nomeDaLoja()}</h1>
+            {onBack && <span className="shrink-0 font-display text-[11px] tracking-widest uppercase text-primary">Pede Aki</span>}
+        </div>
+    </header>
+);
 
 const Header: React.FC<{ onAdminClick: () => void; onMotoboyClick: () => void; onWaiterClick: () => void; settings: Partial<Settings> | null; onToggleTheme: () => void; currentTheme: string }> = ({ onAdminClick, onMotoboyClick, onWaiterClick, settings, onToggleTheme, currentTheme }) => (
     <header className="bg-surface shadow-sm transition-all duration-300 w-full overflow-hidden shrink-0">
@@ -1687,13 +1705,15 @@ const ItemDetailModal: React.FC<{
     );
 };
 
-const CustomerRecognitionBar: React.FC<{ onPhoneSubmit: (phone: string) => void; isLoading: boolean }> = ({ onPhoneSubmit, isLoading }) => {
-    const [phone, setPhone] = useState('');
+const CustomerRecognitionBar: React.FC<{ onPhoneSubmit: (phone: string) => void; isLoading: boolean; pedeAki?: boolean }> = ({ onPhoneSubmit, isLoading, pedeAki = false }) => {
+    // No modo Pede Aki o telefone vem do aparelho (o mesmo do Perfil da vitrine): digita uma vez so.
+    const [phone, setPhone] = useState(() => (pedeAki ? telefoneBonito(telefoneDoAparelho()) : ''));
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         console.log("CustomerRecognitionBar: Submit clicked with phone:", phone);
         if (phone.replace(/\D/g, '').length >= 8) {
+            if (pedeAki) guardarTelefoneDoAparelho(phone);
             onPhoneSubmit(phone);
         } else {
             console.warn("CustomerRecognitionBar: Phone too short:", phone);
@@ -1718,6 +1738,31 @@ const CustomerRecognitionBar: React.FC<{ onPhoneSubmit: (phone: string) => void;
             setPhone(formatted);
         }
     };
+
+    if (pedeAki) {
+        return (
+            <div id="tour-fidelity" className="w-full shrink-0 px-3 py-2 bg-background border-b border-primary/20">
+                <form onSubmit={handleSubmit} className="flex items-center gap-2 max-w-5xl mx-auto">
+                    <input
+                        type="tel"
+                        inputMode="tel"
+                        value={phone}
+                        onChange={handlePhoneChange}
+                        placeholder="Seu telefone, para pedidos e pontos"
+                        className="flex-1 min-w-0 bg-surface text-text-light placeholder:text-text-dark border border-text-light/10 rounded-md px-3 py-2 text-sm font-bold focus:outline-none focus:border-primary"
+                        maxLength={15}
+                    />
+                    <button
+                        type="submit"
+                        disabled={isLoading || phone.replace(/\D/g, '').length < 8}
+                        className="shrink-0 bg-primary text-black font-display tracking-wider uppercase px-4 py-2 rounded-md text-sm disabled:opacity-50"
+                    >
+                        {isLoading ? '...' : 'Entrar'}
+                    </button>
+                </form>
+            </div>
+        );
+    }
 
     return (
         <div id="tour-fidelity" className="w-full relative overflow-hidden shrink-0 shadow-[0_4px_20px_rgba(0,0,0,0.4)] border-b border-[#ffd700]/30"
@@ -1851,7 +1896,7 @@ const RewardCelebrationModal: React.FC<{ isOpen: boolean; onClose: () => void; o
     );
 };
 
-const CustomerPage: React.FC = () => {
+const CustomerPage: React.FC<{ pedeAki?: boolean }> = ({ pedeAki = false }) => {
     const navigate = useNavigate();
     const { currentStore, loading: storeLoading } = useStore();
 
@@ -2479,6 +2524,17 @@ const CustomerPage: React.FC = () => {
     const { isStoreOpen, statusMessage } = useStoreStatus(settings);
     const { isInstallable, install, isIOS } = usePWAInstall();
 
+    // Loja de comissao: visual do Pede Aki (paleta, fonte) enquanto a pagina esta aberta.
+    useEffect(() => {
+        if (!pedeAki) return;
+        document.documentElement.classList.add('tema-pedeaki');
+        const l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap';
+        document.head.appendChild(l);
+        return () => { document.documentElement.classList.remove('tema-pedeaki'); document.head.removeChild(l); };
+    }, [pedeAki]);
+
     const loadData = async () => {
         if (!currentStore) return;
 
@@ -2652,11 +2708,13 @@ const CustomerPage: React.FC = () => {
             <RewardCelebrationModal isOpen={showRewardCelebration} onClose={() => setShowRewardCelebration(false)} onRedeem={handleRedeemReward} />
             <div className="fixed top-0 left-0 right-0 z-40 bg-background shadow-md overflow-hidden">
                 <StoreStatusBanner isOpen={isStoreOpen} message={statusMessage} />
-                <Header onAdminClick={() => navigate('admin')} onMotoboyClick={() => navigate('entregador')} onWaiterClick={() => navigate('garcom')} settings={settings} onToggleTheme={toggleTheme} currentTheme={theme} />
+                {pedeAki
+                    ? <PedeAkiHeader settings={settings} onBack={window.location.pathname === '/' ? null : () => navigate('/')} />
+                    : <Header onAdminClick={() => navigate('admin')} onMotoboyClick={() => navigate('entregador')} onWaiterClick={() => navigate('garcom')} settings={settings} onToggleTheme={toggleTheme} currentTheme={theme} />}
                 <DiscountBanner settings={settings} />
-                <RaffleBanner settings={settings} />
-                {(isInstallable || isIOS) && <PWAInstallBanner onInstall={install} isIOS={isIOS} />}
-                <CustomerRecognitionBar onPhoneSubmit={handleHeroPhoneSubmit} isLoading={isSearchingCustomer} />
+                {!pedeAki && <RaffleBanner settings={settings} />}
+                {!pedeAki && (isInstallable || isIOS) && <PWAInstallBanner onInstall={install} isIOS={isIOS} />}
+                <CustomerRecognitionBar onPhoneSubmit={handleHeroPhoneSubmit} isLoading={isSearchingCustomer} pedeAki={pedeAki} />
                 <ProductSearchBar value={searchTerm} onChange={setSearchTerm} />
                 {!searchTerm && <CategoryNav categories={menu.categories} />}
             </div>
@@ -2668,7 +2726,7 @@ const CustomerPage: React.FC = () => {
             />
 
             {/* Fixed Height Spacer - Safest for mobile performance */}
-            <div className="h-[260px] md:h-[220px]"></div>
+            <div className={pedeAki ? 'h-[205px] md:h-[200px]' : 'h-[260px] md:h-[220px]'}></div>
             <main className="pb-32 px-4 relative z-0 overflow-x-hidden w-full max-w-full">
                 {promotions.length > 0 && !searchTerm && (
                     <section id="category--1" className="w-full py-1 relative z-0 overflow-hidden">

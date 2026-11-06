@@ -31,6 +31,11 @@ const CustomerPage: React.FC = () => {
 
     const aceite = currentStore ? <AceiteDeTermos /> : null;
 
+    // Loja de comissão: sempre a casca do Pede Aki (Classic com o tema novo), ignorando storefrontTheme.
+    if (currentStore?.modelo === 'comissao') {
+        return <>{aceite}<CustomerPageClassic pedeAki /></>;
+    }
+
     if (settings?.storefrontTheme === 'modern') {
         return <>{aceite}<CustomerPageModern /></>;
     }

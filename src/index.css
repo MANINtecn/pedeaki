@@ -30,6 +30,26 @@ html.light-mode {
   --color-secondary: #d97706;  /* Golden Amber */
 }
 
+/* PEDE AKI: tema das lojas de comissao (classe posta no <html> pela pagina da loja).
+   Mais forte que :root e html.light-mode, entao vale com o tema claro ou escuro do aparelho. */
+html.tema-pedeaki,
+html.tema-pedeaki.light-mode {
+  --color-background: #110e15;
+  --color-surface: #2a2430;
+  --color-surface-hover: #3a3342;
+  --color-text-main: #f7efe4;
+  --color-text-muted: #b9b0c2;
+  --color-primary: #ff6a1a;
+  --color-primary-dark: #d8530e;
+  --color-primary-light: #ff8a4d;
+  --color-secondary: #ff9a5a;
+}
+html.tema-pedeaki body { font-family: 'Space Grotesk', 'Inter', sans-serif; background: #110e15; }
+/* cantos menos redondos, como o resto do Pede Aki */
+html.tema-pedeaki .rounded-2xl,
+html.tema-pedeaki .rounded-xl,
+html.tema-pedeaki .rounded-lg { border-radius: 6px; }
+
 /* Sem ALTURA definida aqui, o h-screen do painel admin nao tem referencia e o
    <body> cresce com o conteudo: a PAGINA INTEIRA passa a rolar, deixando visivel
    o conteudo da aba seguinte (que fica logo abaixo da tela). Foi a causa do

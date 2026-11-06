@@ -5,17 +5,13 @@ import {
     fetchLojasShopping, fetchCustomerByPhone, fetchCustomerPointsBalance, fetchLastOrderByPhone,
     canonicalPhone, type LojaShopping,
 } from '../services/supabaseService';
+import { telefoneDoAparelho, guardarTelefoneDoAparelho, apagarTelefoneDoAparelho } from '../utils/telefoneCliente';
 
 // Perfil do cliente. Entra só com o telefone, sem validação (mesmo jeito do Papa-Leguas).
 // O telefone fica guardado neste aparelho. Lojista entra pelo botão "Sou lojista" (/entrar).
 // Risco aceito e registrado no diário: sem validação, qualquer pessoa pode digitar o telefone de outra.
 
-export const CHAVE_TELEFONE_CLIENTE = 'pedeaki_cliente_telefone';
 const DDD_PADRAO = '32'; // Tocantins/MG
-
-export const telefoneDoAparelho = (): string => {
-    try { return localStorage.getItem(CHAVE_TELEFONE_CLIENTE) || ''; } catch { return ''; }
-};
 
 const corte = (px: number): React.CSSProperties => ({
     clipPath: `polygon(${px}px 0%, calc(100% - ${px}px) 0%, 100% ${px}px, 100% calc(100% - ${px}px), calc(100% - ${px}px) 100%, ${px}px 100%, 0% calc(100% - ${px}px), 0% ${px}px)`,
@@ -77,13 +73,13 @@ const PerfilPage: React.FC = () => {
         if (digitos.length < 8) { setErro('Digite o telefone com DDD. Exemplo: 32 99999-9999'); return; }
         const canon = canonicalPhone(campo, DDD_PADRAO);
         if (canon.length !== 10) { setErro('Esse telefone não parece certo. Confira o DDD e o número.'); return; }
-        try { localStorage.setItem(CHAVE_TELEFONE_CLIENTE, canon); } catch { /* sem armazenamento: vale só nesta tela */ }
+        guardarTelefoneDoAparelho(canon);
         setErro('');
         setTelefone(canon);
     };
 
     const sair = () => {
-        try { localStorage.removeItem(CHAVE_TELEFONE_CLIENTE); } catch { /* tudo bem */ }
+        apagarTelefoneDoAparelho();
         setTelefone(''); setCampo(''); setDados(null); setNome('');
     };
 
