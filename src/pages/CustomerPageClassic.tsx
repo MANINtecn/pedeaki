@@ -19,6 +19,7 @@ import {
     Sun, Moon, Trash2 as LucideTrash, ArrowLeft as LucideArrowLeft
 } from 'lucide-react';
 import { telefoneDoAparelho, guardarTelefoneDoAparelho, telefoneBonito } from '../utils/telefoneCliente';
+import { temaDaCategoria } from '../utils/temaDaLoja';
 import { normalizeString } from '../utils/searchUtils';
 import introJs from 'intro.js';
 import { MIN_ORDER_VALUE } from '../constants';
@@ -385,18 +386,18 @@ const PedeAkiInfoLoja: React.FC<{ settings: Partial<Settings> | null; loja: any;
     const minimo = Number(settings?.minOrderValue) || 0;
     return (
         <section className="px-4 pt-3">
-            <div style={corteAki(14)} className="bg-[#F7EFE4] text-[#15121A] p-3 flex gap-3 border-2 border-[#F7EFE4]">
+            <div style={corteAki(14)} className="bg-[var(--pa-card)] text-[var(--pa-ink)] p-3 flex gap-3 border-2 border-[var(--pa-line)]">
                 <div style={corteAki(10)} className="relative w-20 h-20 shrink-0 overflow-hidden bg-black flex items-center justify-center">
                     {settings?.logoUrl ? <img src={settings.logoUrl} alt="" className="w-full h-full object-cover" /> : <RoadrunnerIcon />}
-                    <div className={`absolute bottom-0 left-0 right-0 h-1 ${aberta ? 'bg-[#FF6A1A]' : 'bg-[#8A8294]'}`} />
+                    <div className={`absolute bottom-0 left-0 right-0 h-1 ${aberta ? 'bg-primary' : 'bg-[#8A8294]'}`} />
                 </div>
                 <div className="min-w-0 flex-1 flex flex-col justify-between">
                     <div>
                         <h2 className="font-display text-[22px] tracking-wide uppercase leading-none">{nomeDaLoja()}</h2>
-                        {loja?.categoria && <p className="text-[12px] text-[#55565B] mt-1">{[loja.categoria, loja.cidade].filter(Boolean).join(' • ')}</p>}
+                        {loja?.categoria && <p className="text-[12px] text-[var(--pa-ink-soft)] mt-1">{[loja.categoria, loja.cidade].filter(Boolean).join(' • ')}</p>}
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold uppercase tracking-wide text-[#6B6C72]">
-                        <span style={corteAki(4)} className={`px-1.5 py-0.5 ${aberta ? 'bg-[#FF6A1A] text-black' : 'bg-[#8A8294] text-white'}`}>{aberta ? 'Aberto agora' : 'Fechada'}</span>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold uppercase tracking-wide text-[var(--pa-ink-soft)]">
+                        <span style={corteAki(4)} className={`px-1.5 py-0.5 ${aberta ? 'bg-primary text-[var(--pa-on-primary)]' : 'bg-[#8A8294] text-white'}`}>{aberta ? 'Aberto agora' : 'Fechada'}</span>
                         {!aberta && mensagem && <span>{mensagem}</span>}
                         {taxa > 0 && <span>Taxa R$ {taxa.toFixed(2).replace('.', ',')}</span>}
                         {minimo > 0 && <span>Mínimo R$ {minimo.toFixed(2).replace('.', ',')}</span>}
@@ -408,9 +409,9 @@ const PedeAkiInfoLoja: React.FC<{ settings: Partial<Settings> | null; loja: any;
 };
 
 const PedeAkiRodape: React.FC<{ itens: number; total: number; onCarrinho: () => void; onBusca: () => void; onPerfil: () => void; onInicio: () => void }> = ({ itens, total, onCarrinho, onBusca, onPerfil, onInicio }) => (
-    <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', background: '#15121A' }}>
+    <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', background: 'var(--pa-nav)' }}>
         {itens > 0 && (
-            <div style={corteAki(10)} className="mx-2 mt-2 mb-1 px-3.5 py-2 border-2 border-white bg-[#15121A] flex items-center justify-between gap-3">
+            <div style={corteAki(10)} className="mx-2 mt-2 mb-1 px-3.5 py-2 border-2 border-[var(--pa-ink)] bg-[var(--pa-nav)] flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                     <div style={corteAki(6)} className="w-8 h-8 flex items-center justify-center bg-surface text-text-light"><LucideShoppingCart size={18} /></div>
                     <div>
@@ -418,7 +419,7 @@ const PedeAkiRodape: React.FC<{ itens: number; total: number; onCarrinho: () => 
                         <p className="font-display text-[18px] leading-tight text-text-light">R$ {total.toFixed(2).replace('.', ',')}</p>
                     </div>
                 </div>
-                <button onClick={onCarrinho} style={corteAki(8)} className="px-4 py-2 bg-primary text-black font-display text-[14px] tracking-wider uppercase active:scale-[0.97]">VER CARRINHO</button>
+                <button onClick={onCarrinho} style={corteAki(8)} className="px-4 py-2 bg-primary text-[var(--pa-on-primary)] font-display text-[14px] tracking-wider uppercase active:scale-[0.97]">VER CARRINHO</button>
             </div>
         )}
         <nav className="border-t border-text-light/10 px-2 py-1 flex items-center justify-around">
@@ -575,26 +576,26 @@ const MenuItemCard: React.FC<{ item: MenuItem; onAddItem: (item: MenuItem) => vo
             <div
                 onClick={() => !isSoldOut && onAddItem(item)}
                 style={corteAki(14)}
-                className={`bg-[#F7EFE4] text-[#15121A] p-2.5 flex gap-3 border-2 border-[#F7EFE4] cursor-pointer active:scale-[0.99] ${isSoldOut ? 'opacity-60 cursor-not-allowed' : ''}`}
+                className={`bg-[var(--pa-card)] text-[var(--pa-ink)] p-2.5 flex gap-3 border-2 border-[var(--pa-line)] cursor-pointer active:scale-[0.99] ${isSoldOut ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
                 {item.image && (
                     <div style={corteAki(10)} className="relative w-24 h-24 shrink-0 overflow-hidden bg-black">
                         <ImagemProduto src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                        <div className={`absolute bottom-0 left-0 right-0 h-1 ${isSoldOut ? 'bg-[#8A8294]' : 'bg-[#FF6A1A]'}`} />
+                        <div className={`absolute bottom-0 left-0 right-0 h-1 ${isSoldOut ? 'bg-[#8A8294]' : 'bg-primary'}`} />
                     </div>
                 )}
                 <div className="min-w-0 flex-1 flex flex-col justify-between gap-1.5">
                     <div>
                         <h3 className="font-display text-[19px] tracking-wide uppercase leading-none">{sanitizeHtmlEntities(item.name)}</h3>
-                        {item.description && <p className="text-[12px] text-[#55565B] leading-snug line-clamp-2 mt-1">{sanitizeHtmlEntities(item.description)}</p>}
+                        {item.description && <p className="text-[12px] text-[var(--pa-ink-soft)] leading-snug line-clamp-2 mt-1">{sanitizeHtmlEntities(item.description)}</p>}
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                        <PrecoDoItem item={item} className="font-display text-[22px] leading-none text-[#15121A] whitespace-nowrap" />
+                        <PrecoDoItem item={item} className="font-display text-[22px] leading-none text-[var(--pa-ink)] whitespace-nowrap" />
                         <button
                             onClick={handleAddClick}
                             disabled={isButtonDisabled}
                             style={corteAki(8)}
-                            className={`px-3.5 py-2 font-display text-[14px] tracking-wider uppercase active:scale-[0.97] ${isSoldOut ? 'bg-[#8A8294] text-white' : justAdded ? 'bg-[#15121A] text-white' : 'bg-[#FF6A1A] text-black'}`}
+                            className={`px-3.5 py-2 font-display text-[14px] tracking-wider uppercase active:scale-[0.97] ${isSoldOut ? 'bg-[#8A8294] text-white' : justAdded ? 'bg-[var(--pa-ink)] text-white' : 'bg-primary text-[var(--pa-on-primary)]'}`}
                         >
                             {isSoldOut ? 'Esgotado' : justAdded ? 'Adicionado' : 'Pedir'}
                         </button>
@@ -621,7 +622,7 @@ const MenuItemCard: React.FC<{ item: MenuItem; onAddItem: (item: MenuItem) => vo
                     </div>
                     {isSoldOut && (
                         <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center">
-                            <span className="text-white font-black text-sm border-2 border-white px-3 py-1 rounded-lg transform -rotate-12 uppercase">Esgotado</span>
+                            <span className="text-white font-black text-sm border-2 border-[var(--pa-ink)] px-3 py-1 rounded-lg transform -rotate-12 uppercase">Esgotado</span>
                         </div>
                     )}
                 </div>
@@ -657,7 +658,7 @@ const MenuSection: React.FC<{ category: Category; items: MenuItem[]; onAddItem: 
         return (
             <section id={`category-${category.id}`} className="px-4 pt-5 scroll-mt-40">
                 <div className="flex items-center gap-2 mb-3">
-                    <span className="w-2.5 h-2.5 bg-primary rotate-45 shadow-[0_0_6px_#FF6A1A]" />
+                    <span className="w-2.5 h-2.5 bg-primary rotate-45" />
                     <h2 className="font-display text-[26px] tracking-wide uppercase leading-none text-text-light">{category.name}</h2>
                 </div>
                 <div className="flex flex-col gap-3">
@@ -1889,7 +1890,7 @@ const CustomerRecognitionBar: React.FC<{ onPhoneSubmit: (phone: string) => void;
                     <button
                         type="submit"
                         disabled={isLoading || phone.replace(/\D/g, '').length < 8}
-                        className="shrink-0 bg-primary text-black font-display tracking-wider uppercase px-4 py-2 rounded-md text-sm disabled:opacity-50"
+                        className="shrink-0 bg-primary text-[var(--pa-on-primary)] font-display tracking-wider uppercase px-4 py-2 rounded-md text-sm disabled:opacity-50"
                     >
                         {isLoading ? '...' : 'Entrar'}
                     </button>
@@ -2669,13 +2670,14 @@ const CustomerPage: React.FC<{ pedeAki?: boolean }> = ({ pedeAki = false }) => {
     // Loja de comissao: visual do Pede Aki (paleta, fonte) enquanto a pagina esta aberta.
     useEffect(() => {
         if (!pedeAki) return;
-        document.documentElement.classList.add('tema-pedeaki');
+        const tema = temaDaCategoria(currentStore?.categoria);
+        document.documentElement.classList.add('tema-pedeaki', `pa-${tema}`);
         const l = document.createElement('link');
         l.rel = 'stylesheet';
         l.href = 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap';
         document.head.appendChild(l);
-        return () => { document.documentElement.classList.remove('tema-pedeaki'); document.head.removeChild(l); };
-    }, [pedeAki]);
+        return () => { document.documentElement.classList.remove('tema-pedeaki', `pa-${tema}`); document.head.removeChild(l); };
+    }, [pedeAki, currentStore?.categoria]);
 
     const loadData = async () => {
         if (!currentStore) return;

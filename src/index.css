@@ -30,25 +30,142 @@ html.light-mode {
   --color-secondary: #d97706;  /* Golden Amber */
 }
 
-/* PEDE AKI: tema das lojas de comissao (classe posta no <html> pela pagina da loja).
+/* PEDE AKI: tema das lojas de comissao. A classe tema-pedeaki vai no <html> pela pagina da loja, junto com
+   pa-<tema> (src/utils/temaDaLoja.ts). Paleta clara por categoria; o layout e o mesmo. Comida e o padrao.
    Mais forte que :root e html.light-mode, entao vale com o tema claro ou escuro do aparelho. */
 html.tema-pedeaki,
 html.tema-pedeaki.light-mode {
-  --color-background: #110e15;
-  --color-surface: #2a2430;
-  --color-surface-hover: #3a3342;
-  --color-text-main: #f7efe4;
-  --color-text-muted: #b9b0c2;
-  --color-primary: #ff6a1a;
-  --color-primary-dark: #d8530e;
-  --color-primary-light: #ff8a4d;
-  --color-secondary: #ff9a5a;
+  --color-background: #FFF6EC;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #FBEBDA;
+  --color-text-main: #2B1A10;
+  --color-text-muted: #7A6455;
+  --color-primary: #F26B1D;
+  --color-primary-dark: #C9540F;
+  --color-primary-light: #FF8A4D;
+  --color-secondary: #D94F2B;
+  --pa-card: #FFFFFF;
+  --pa-line: #EBD9C6;
+  --pa-ink: #2B1A10;
+  --pa-ink-soft: #7A6455;
+  --pa-on-primary: #1F120A;
+  --pa-nav: #FFFFFF;
 }
-html.tema-pedeaki body { font-family: 'Space Grotesk', 'Inter', sans-serif; background: #110e15; }
+html.tema-pedeaki.pa-hortifruti,
+html.tema-pedeaki.pa-hortifruti.light-mode {
+  --color-background: #F1F8EC;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #E4F1DA;
+  --color-text-main: #14301C;
+  --color-text-muted: #547060;
+  --color-primary: #2E9E4F;
+  --color-primary-dark: #237A3D;
+  --color-primary-light: #4DBB6D;
+  --color-secondary: #A3D133;
+  --pa-card: #FFFFFF;
+  --pa-line: #D5E6CB;
+  --pa-ink: #14301C;
+  --pa-ink-soft: #547060;
+  --pa-on-primary: #0E2415;
+  --pa-nav: #FFFFFF;
+}
+html.tema-pedeaki.pa-farmacia,
+html.tema-pedeaki.pa-farmacia.light-mode {
+  --color-background: #ECF8F6;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #DAF0EC;
+  --color-text-main: #0E2F2B;
+  --color-text-muted: #4E6F6A;
+  --color-primary: #12A394;
+  --color-primary-dark: #0D7D71;
+  --color-primary-light: #34C2B3;
+  --color-secondary: #4DA3FF;
+  --pa-card: #FFFFFF;
+  --pa-line: #CBE6E1;
+  --pa-ink: #0E2F2B;
+  --pa-ink-soft: #4E6F6A;
+  --pa-on-primary: #062421;
+  --pa-nav: #FFFFFF;
+}
+html.tema-pedeaki.pa-agro,
+html.tema-pedeaki.pa-agro.light-mode {
+  --color-background: #F5F8E9;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #E8EFCF;
+  --color-text-main: #24300C;
+  --color-text-muted: #5E6B3F;
+  --color-primary: #7BA21B;
+  --color-primary-dark: #5E7D12;
+  --color-primary-light: #97BF3A;
+  --color-secondary: #C9A227;
+  --pa-card: #FFFFFF;
+  --pa-line: #DDE5C0;
+  --pa-ink: #24300C;
+  --pa-ink-soft: #5E6B3F;
+  --pa-on-primary: #1B2509;
+  --pa-nav: #FFFFFF;
+}
+html.tema-pedeaki.pa-presentes,
+html.tema-pedeaki.pa-presentes.light-mode {
+  --color-background: #FFF0F5;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #FFDFEA;
+  --color-text-main: #3A1224;
+  --color-text-muted: #7B5666;
+  --color-primary: #E0457B;
+  --color-primary-dark: #B93262;
+  --color-primary-light: #F06A98;
+  --color-secondary: #FF7A59;
+  --pa-card: #FFFFFF;
+  --pa-line: #F3D2DE;
+  --pa-ink: #3A1224;
+  --pa-ink-soft: #7B5666;
+  --pa-on-primary: #2E0C1B;
+  --pa-nav: #FFFFFF;
+}
+html.tema-pedeaki.pa-eventos,
+html.tema-pedeaki.pa-eventos.light-mode {
+  --color-background: #F4EEFF;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #E8DDFF;
+  --color-text-main: #26144A;
+  --color-text-muted: #665A86;
+  --color-primary: #8B5CF6;
+  --color-primary-dark: #6D3FDB;
+  --color-primary-light: #A98BFA;
+  --color-secondary: #FF7A59;
+  --pa-card: #FFFFFF;
+  --pa-line: #DDD0F5;
+  --pa-ink: #26144A;
+  --pa-ink-soft: #665A86;
+  --pa-on-primary: #FFFFFF;
+  --pa-nav: #FFFFFF;
+}
+html.tema-pedeaki.pa-utilidades,
+html.tema-pedeaki.pa-utilidades.light-mode {
+  --color-background: #EFF4FB;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #DFE9F7;
+  --color-text-main: #10223F;
+  --color-text-muted: #52627F;
+  --color-primary: #2F6FEB;
+  --color-primary-dark: #2255C0;
+  --color-primary-light: #5A8FF2;
+  --color-secondary: #FF7A59;
+  --pa-card: #FFFFFF;
+  --pa-line: #D2DEEF;
+  --pa-ink: #10223F;
+  --pa-ink-soft: #52627F;
+  --pa-on-primary: #FFFFFF;
+  --pa-nav: #FFFFFF;
+}
+html.tema-pedeaki body { font-family: 'Space Grotesk', 'Inter', sans-serif; background: var(--color-background); }
 /* cantos menos redondos, como o resto do Pede Aki */
 html.tema-pedeaki .rounded-2xl,
 html.tema-pedeaki .rounded-xl,
 html.tema-pedeaki .rounded-lg { border-radius: 6px; }
+/* a janela do produto ainda e a antiga (roxo fixo): vira tinta neutra enquanto nao e refeita */
+html.tema-pedeaki [class*="bg-[#130826]"] { background-color: var(--pa-ink) !important; border-color: rgba(255,255,255,.15) !important; }
 
 /* Sem ALTURA definida aqui, o h-screen do painel admin nao tem referencia e o
    <body> cresce com o conteudo: a PAGINA INTEIRA passa a rolar, deixando visivel
