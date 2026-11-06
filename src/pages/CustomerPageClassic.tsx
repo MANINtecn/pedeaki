@@ -383,44 +383,32 @@ const RaffleBanner: React.FC<{ settings: Partial<Settings> | null }> = ({ settin
 
 const horaCurta = (t?: string) => (t || '').slice(0, 5);
 
-const PedeAkiInfoLoja: React.FC<{ settings: Partial<Settings> | null; loja: any; aberta: boolean; mensagem: string }> = ({ settings, loja, aberta, mensagem }) => {
+const PedeAkiInfoLoja: React.FC<{ settings: Partial<Settings> | null; loja: any; aberta: boolean; mensagem: string }> = ({ settings, loja, aberta }) => {
     const taxa = Number(settings?.deliveryFee) || 0;
     const minimo = Number(settings?.minOrderValue) || 0;
     const abre = horaCurta(settings?.openingTime);
     const fecha = horaCurta(settings?.closingTime);
-    const aviso = (mensagem || '').replace(/(\d{2}:\d{2}):\d{2}/g, '$1');
-    const capa = settings?.heroImageUrl
-        ? `linear-gradient(rgba(0,0,0,.10), rgba(0,0,0,.25)), url(${settings.heroImageUrl}) center/cover`
-        : 'var(--pa-hero)';
-    const caixa = (rotulo: string, valor: string) => (
-        <div style={corteAki(6)} className="bg-[var(--pa-chip)] px-2 py-1.5 min-w-0">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--pa-ink-soft)] leading-none">{rotulo}</p>
-            <p className="text-[13px] font-bold text-[var(--pa-ink)] leading-tight mt-1 truncate">{valor}</p>
+    const caixa = (rotulo: string, valor: string, alerta = false) => (
+        <div style={corteAki(5)} className={`px-1.5 py-1 min-w-0 text-center ${alerta ? 'bg-[#FDE0DC]' : 'bg-[var(--pa-chip)]'}`}>
+            <p className={`text-[8px] font-bold uppercase tracking-widest leading-none ${alerta ? 'text-[#B42318]' : 'text-[var(--pa-ink-soft)]'}`}>{rotulo}</p>
+            <p className={`text-[12px] font-bold leading-tight mt-0.5 truncate ${alerta ? 'text-[#B42318]' : 'text-[var(--pa-ink)]'}`}>{valor}</p>
         </div>
     );
     return (
         <section className="px-4 pt-3">
-            <div style={corteAki(14)} className="bg-[var(--pa-card)] text-[var(--pa-ink)] border-2 border-[var(--pa-line)] overflow-hidden">
-                <div className="h-24" style={{ background: capa }} />
-                <div className="px-4 pb-4 -mt-11 flex flex-col gap-2.5">
-                    <div style={corteAki(12)} className="w-[88px] h-[88px] bg-[var(--pa-card)] p-1 shrink-0">
-                        <div style={corteAki(9)} className="w-full h-full overflow-hidden bg-black flex items-center justify-center">
-                            {settings?.logoUrl ? <img src={settings.logoUrl} alt="" className="w-full h-full object-cover" /> : <RoadrunnerIcon />}
-                        </div>
+            <div style={corteAki(14)} className="bg-[var(--pa-card)] text-[var(--pa-ink)] border-2 border-[var(--pa-line)] px-3 pt-3 pb-3 flex flex-col items-center gap-1.5 text-center">
+                <div style={corteAki(10)} className="w-16 h-16 bg-primary p-[2px] shrink-0">
+                    <div style={corteAki(8)} className="w-full h-full overflow-hidden bg-black flex items-center justify-center">
+                        {settings?.logoUrl ? <img src={settings.logoUrl} alt="" className="w-full h-full object-cover" /> : <RoadrunnerIcon />}
                     </div>
-                    <div>
-                        <h2 className="font-display text-[28px] tracking-wide uppercase leading-none">{nomeDaLoja()}</h2>
-                        {loja?.categoria && <p className="text-[13px] text-[var(--pa-ink-soft)] mt-1">{[loja.categoria, loja.cidade].filter(Boolean).join(' • ')}</p>}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                        <span style={corteAki(5)} className={`px-2 py-1 text-[11px] font-bold uppercase tracking-wider ${aberta ? 'bg-primary text-[var(--pa-on-primary)]' : 'bg-[#8A8294] text-white'}`}>{aberta ? 'Aberto agora' : 'Fechada'}</span>
-                        {!aberta && aviso && <span className="text-[11px] font-bold uppercase tracking-wide text-[var(--pa-ink-soft)]">{aviso}</span>}
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                        {caixa('Entrega', taxa > 0 ? `R$ ${taxa.toFixed(2).replace('.', ',')}` : 'Pelo bairro')}
-                        {caixa('Pedido mínimo', minimo > 0 ? `R$ ${minimo.toFixed(2).replace('.', ',')}` : 'Sem mínimo')}
-                        {caixa('Horário', abre && fecha ? `${abre} às ${fecha}` : 'Consulte')}
-                    </div>
+                </div>
+                <h2 className="font-display text-[24px] tracking-wide uppercase leading-none">{nomeDaLoja()}</h2>
+                {loja?.categoria && <p className="text-[12px] text-[var(--pa-ink-soft)] leading-none">{[loja.categoria, loja.cidade].filter(Boolean).join(' • ')}</p>}
+                <span style={corteAki(5)} className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-white ${aberta ? 'bg-[#1E9E53]' : 'bg-[#D92D20]'}`}>{aberta ? 'Aberto agora' : 'Fechada agora'}</span>
+                <div className="grid grid-cols-3 gap-1.5 w-full mt-0.5">
+                    {caixa('Entrega', taxa > 0 ? `R$ ${taxa.toFixed(2).replace('.', ',')}` : 'Pelo bairro')}
+                    {caixa('Mínimo', minimo > 0 ? `R$ ${minimo.toFixed(2).replace('.', ',')}` : 'Sem mínimo')}
+                    {caixa('Horário', abre && fecha ? `${abre} às ${fecha}` : 'Consulte', !aberta)}
                 </div>
             </div>
         </section>
@@ -450,7 +438,7 @@ const PedeAkiRodape: React.FC<{ itens: number; total: number; onCarrinho: () => 
     </div>
 );
 
-const PedeAkiHeader: React.FC<{ settings: Partial<Settings> | null; onBack: (() => void) | null }> = ({ settings, onBack }) => (
+const PedeAkiHeader: React.FC<{ settings: Partial<Settings> | null; onBack: (() => void) | null }> = ({ onBack }) => (
     <header className="w-full shrink-0 h-[56px] flex items-center" style={{ background: 'var(--pa-hero)' }}>
         <div className="flex items-center gap-2 px-3 w-full">
             {onBack && (
@@ -458,11 +446,8 @@ const PedeAkiHeader: React.FC<{ settings: Partial<Settings> | null; onBack: (() 
                     <LucideArrowLeft className="w-5 h-5" />
                 </button>
             )}
-            <div className="w-9 h-9 shrink-0 overflow-hidden rounded-md bg-white/40 flex items-center justify-center">
-                {settings?.logoUrl ? <img src={settings.logoUrl} alt="" className="w-full h-full object-cover" /> : <RoadrunnerIcon />}
-            </div>
-            <h1 className="min-w-0 flex-1 truncate font-display text-xl tracking-wide uppercase text-[var(--pa-on-primary)] leading-none">{nomeDaLoja()}</h1>
-            {onBack && <span className="shrink-0 font-display text-[11px] tracking-widest uppercase text-[var(--pa-on-primary)] opacity-80">Pede Aki</span>}
+            <h1 className="min-w-0 flex-1 truncate font-display text-2xl tracking-wider uppercase text-[var(--pa-on-primary)] leading-none">Pede Aki</h1>
+            <img src="/pwa-192x192.png" alt="Pede Aki" style={corteAki(8)} className="shrink-0 w-10 h-10 object-cover bg-black" />
         </div>
     </header>
 );
