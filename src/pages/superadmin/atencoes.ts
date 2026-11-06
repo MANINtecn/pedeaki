@@ -42,6 +42,10 @@ export function calcularAtencoes(d: DadosParaAtencao): Atencao[] {
     const suspeitas = new Set(resumirCancelamentos(d.pedidos).filter(r => r.suspeito).map(r => r.store_id));
     add('cancelamento', 'media', 'Muitos cancelamentos (possível fuga da comissão)', 'pedidos', d.stores.filter(s => suspeitas.has(s.id)));
 
+    // Estorno do PIX que o Asaas recusou: o cliente pagou e a loja cancelou, falta devolver na mao
+    const semEstorno = new Set(d.pedidos.filter(p => p.payment_status === 'estorno_pendente').map(p => p.store_id));
+    add('estorno-pendente', 'alta', 'PIX pago e pedido cancelado, mas o estorno nao saiu (devolver o dinheiro ao cliente)', 'pedidos', d.stores.filter(s => semEstorno.has(s.id)));
+
     // Mensalidade vencida ou vencendo
     add('vencimento', 'media', 'Mensalidade vencida ou vencendo em menos de 7 dias', 'lojas', ativas.filter(s =>
         tipoDaLoja(s) !== 'comissao' && !!s.subscription_end_date && (new Date(s.subscription_end_date).getTime() - d.agora) / 86400000 < 7));

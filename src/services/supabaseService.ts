@@ -2275,12 +2275,12 @@ export const fetchMeuFinanceiro = async (storeId: string): Promise<LojaFinanceir
 export interface PedidoDaPlataforma {
     id: string; store_id: string; timestamp: string; status: string; total: number; payment_method: string | null;
     origin: string | null; order_type: string | null; customer_name: string | null; daily_order_number: number | null;
-    cancel_reason: string | null; delivery_fee: number | null;
+    cancel_reason: string | null; delivery_fee: number | null; payment_status?: string | null;
 }
 
 /** Pedidos de todas as lojas desde uma data (mais recentes primeiro). `cortado` avisa se bateu o limite. */
 export const fetchPedidosDaPlataforma = async (desdeISO: string, limite = 1500): Promise<{ pedidos: PedidoDaPlataforma[]; cortado: boolean }> => {
-    const colunas = 'id,store_id,timestamp,status,total,payment_method,origin,order_type,customer_name,daily_order_number,delivery_fee';
+    const colunas = 'id,store_id,timestamp,status,total,payment_method,origin,order_type,customer_name,daily_order_number,delivery_fee,payment_status';
     let r: any = await supabase.from('orders').select(colunas + ',cancel_reason').gte('timestamp', desdeISO).order('timestamp', { ascending: false }).limit(limite);
     if (r.error) r = await supabase.from('orders').select(colunas).gte('timestamp', desdeISO).order('timestamp', { ascending: false }).limit(limite); // antes do SQL 4
     if (r.error) throw r.error;

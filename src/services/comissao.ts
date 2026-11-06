@@ -134,7 +134,7 @@ export function nivelDeContato(ultimoContato: string | number | null | undefined
 }
 
 // ---------------- Auditoria de cancelamentos ----------------
-export interface PedidoResumo { store_id: string; status: string; total: number; cancel_reason?: string | null }
+export interface PedidoResumo { store_id: string; status: string; total: number; cancel_reason?: string | null; payment_status?: string | null }
 
 export interface ResumoDeCancelamento {
     store_id: string;
@@ -154,6 +154,7 @@ export const AMOSTRA_MINIMA = 8;
 export function resumirCancelamentos(pedidos: PedidoResumo[]): ResumoDeCancelamento[] {
     const por = new Map<string, ResumoDeCancelamento>();
     for (const p of pedidos) {
+        if (p.status === 'Aguardando pagamento' || p.status === 'Expirado') continue; // pedido online que nunca foi pago nao conta como venda nem como cancelamento
         const r = por.get(p.store_id) || { store_id: p.store_id, pedidos: 0, cancelados: 0, taxaPct: 0, semMotivo: 0, valorCancelado: 0, motivos: {}, suspeito: false };
         r.pedidos += 1;
         if (p.status === 'Cancelado') {
@@ -178,7 +179,7 @@ export const ehPedidoOnline = (origin?: string | null) => (origin || '') !== 'BA
 export function estimarComissao(pedidos: { total: number; delivery_fee?: number | null; payment_method?: string | null; status: string }[], cond: Condicoes, taxas?: TaxasGateway) {
     let comissao = 0, margem = 0, debito = 0, vendas = 0, n = 0;
     for (const p of pedidos) {
-        if (p.status === 'Cancelado') continue;
+        if (p.status === 'Cancelado' || p.status === 'Aguardando pagamento' || p.status === 'Expirado') continue;
         const meio: MeioDePagamento = p.payment_method === 'PIX' ? 'pix' : p.payment_method === 'Cartão' ? 'credito' : 'dinheiro';
         const r = calcularPedido({ total: Number(p.total) || 0, frete: Number(p.delivery_fee) || 0, meio, entrega: 'propria', condicoes: cond, taxas });
         comissao += r.comissao; margem += r.margemPlataforma; debito += r.debitoGerado; vendas += r.total; n += 1;
