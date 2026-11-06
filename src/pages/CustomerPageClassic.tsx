@@ -381,26 +381,45 @@ const RaffleBanner: React.FC<{ settings: Partial<Settings> | null }> = ({ settin
     return null;
 };
 
+const horaCurta = (t?: string) => (t || '').slice(0, 5);
+
 const PedeAkiInfoLoja: React.FC<{ settings: Partial<Settings> | null; loja: any; aberta: boolean; mensagem: string }> = ({ settings, loja, aberta, mensagem }) => {
     const taxa = Number(settings?.deliveryFee) || 0;
     const minimo = Number(settings?.minOrderValue) || 0;
+    const abre = horaCurta(settings?.openingTime);
+    const fecha = horaCurta(settings?.closingTime);
+    const aviso = (mensagem || '').replace(/(\d{2}:\d{2}):\d{2}/g, '$1');
+    const capa = settings?.heroImageUrl
+        ? `linear-gradient(rgba(0,0,0,.10), rgba(0,0,0,.25)), url(${settings.heroImageUrl}) center/cover`
+        : 'var(--pa-hero)';
+    const caixa = (rotulo: string, valor: string) => (
+        <div style={corteAki(6)} className="bg-[var(--pa-chip)] px-2 py-1.5 min-w-0">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--pa-ink-soft)] leading-none">{rotulo}</p>
+            <p className="text-[13px] font-bold text-[var(--pa-ink)] leading-tight mt-1 truncate">{valor}</p>
+        </div>
+    );
     return (
         <section className="px-4 pt-3">
-            <div style={corteAki(14)} className="bg-[var(--pa-card)] text-[var(--pa-ink)] p-3 flex gap-3 border-2 border-[var(--pa-line)]">
-                <div style={corteAki(10)} className="relative w-20 h-20 shrink-0 overflow-hidden bg-black flex items-center justify-center">
-                    {settings?.logoUrl ? <img src={settings.logoUrl} alt="" className="w-full h-full object-cover" /> : <RoadrunnerIcon />}
-                    <div className={`absolute bottom-0 left-0 right-0 h-1 ${aberta ? 'bg-primary' : 'bg-[#8A8294]'}`} />
-                </div>
-                <div className="min-w-0 flex-1 flex flex-col justify-between">
-                    <div>
-                        <h2 className="font-display text-[22px] tracking-wide uppercase leading-none">{nomeDaLoja()}</h2>
-                        {loja?.categoria && <p className="text-[12px] text-[var(--pa-ink-soft)] mt-1">{[loja.categoria, loja.cidade].filter(Boolean).join(' • ')}</p>}
+            <div style={corteAki(14)} className="bg-[var(--pa-card)] text-[var(--pa-ink)] border-2 border-[var(--pa-line)] overflow-hidden">
+                <div className="h-24" style={{ background: capa }} />
+                <div className="px-4 pb-4 -mt-11 flex flex-col gap-2.5">
+                    <div style={corteAki(12)} className="w-[88px] h-[88px] bg-[var(--pa-card)] p-1 shrink-0">
+                        <div style={corteAki(9)} className="w-full h-full overflow-hidden bg-black flex items-center justify-center">
+                            {settings?.logoUrl ? <img src={settings.logoUrl} alt="" className="w-full h-full object-cover" /> : <RoadrunnerIcon />}
+                        </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold uppercase tracking-wide text-[var(--pa-ink-soft)]">
-                        <span style={corteAki(4)} className={`px-1.5 py-0.5 ${aberta ? 'bg-primary text-[var(--pa-on-primary)]' : 'bg-[#8A8294] text-white'}`}>{aberta ? 'Aberto agora' : 'Fechada'}</span>
-                        {!aberta && mensagem && <span>{mensagem}</span>}
-                        {taxa > 0 && <span>Taxa R$ {taxa.toFixed(2).replace('.', ',')}</span>}
-                        {minimo > 0 && <span>Mínimo R$ {minimo.toFixed(2).replace('.', ',')}</span>}
+                    <div>
+                        <h2 className="font-display text-[28px] tracking-wide uppercase leading-none">{nomeDaLoja()}</h2>
+                        {loja?.categoria && <p className="text-[13px] text-[var(--pa-ink-soft)] mt-1">{[loja.categoria, loja.cidade].filter(Boolean).join(' • ')}</p>}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span style={corteAki(5)} className={`px-2 py-1 text-[11px] font-bold uppercase tracking-wider ${aberta ? 'bg-primary text-[var(--pa-on-primary)]' : 'bg-[#8A8294] text-white'}`}>{aberta ? 'Aberto agora' : 'Fechada'}</span>
+                        {!aberta && aviso && <span className="text-[11px] font-bold uppercase tracking-wide text-[var(--pa-ink-soft)]">{aviso}</span>}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                        {caixa('Entrega', taxa > 0 ? `R$ ${taxa.toFixed(2).replace('.', ',')}` : 'Pelo bairro')}
+                        {caixa('Pedido mínimo', minimo > 0 ? `R$ ${minimo.toFixed(2).replace('.', ',')}` : 'Sem mínimo')}
+                        {caixa('Horário', abre && fecha ? `${abre} às ${fecha}` : 'Consulte')}
                     </div>
                 </div>
             </div>
@@ -432,18 +451,18 @@ const PedeAkiRodape: React.FC<{ itens: number; total: number; onCarrinho: () => 
 );
 
 const PedeAkiHeader: React.FC<{ settings: Partial<Settings> | null; onBack: (() => void) | null }> = ({ settings, onBack }) => (
-    <header className="bg-background w-full shrink-0 border-b border-primary/20">
-        <div className="flex items-center gap-2 px-3 py-2">
+    <header className="w-full shrink-0 h-[56px] flex items-center" style={{ background: 'var(--pa-hero)' }}>
+        <div className="flex items-center gap-2 px-3 w-full">
             {onBack && (
-                <button onClick={onBack} aria-label="Voltar ao Pede Aki" className="shrink-0 p-1.5 rounded-md bg-surface text-text-light active:scale-95">
+                <button onClick={onBack} aria-label="Voltar ao Pede Aki" className="shrink-0 p-1.5 rounded-md bg-white/35 text-[var(--pa-on-primary)] active:scale-95">
                     <LucideArrowLeft className="w-5 h-5" />
                 </button>
             )}
-            <div className="w-9 h-9 shrink-0 overflow-hidden rounded-md bg-surface flex items-center justify-center">
+            <div className="w-9 h-9 shrink-0 overflow-hidden rounded-md bg-white/40 flex items-center justify-center">
                 {settings?.logoUrl ? <img src={settings.logoUrl} alt="" className="w-full h-full object-cover" /> : <RoadrunnerIcon />}
             </div>
-            <h1 className="min-w-0 flex-1 truncate font-display text-xl tracking-wide uppercase text-text-light leading-none">{nomeDaLoja()}</h1>
-            {onBack && <span className="shrink-0 font-display text-[11px] tracking-widest uppercase text-primary">Pede Aki</span>}
+            <h1 className="min-w-0 flex-1 truncate font-display text-xl tracking-wide uppercase text-[var(--pa-on-primary)] leading-none">{nomeDaLoja()}</h1>
+            {onBack && <span className="shrink-0 font-display text-[11px] tracking-widest uppercase text-[var(--pa-on-primary)] opacity-80">Pede Aki</span>}
         </div>
     </header>
 );
@@ -496,10 +515,10 @@ const CategoryNav: React.FC<{ categories: Category[]; pedeAki?: boolean }> = ({ 
     };
     if (pedeAki) {
         return (
-            <nav id="tour-categories" className="bg-background py-2 border-b border-primary/20">
-                <div className="px-3 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+            <nav id="tour-categories" className="sticky top-[56px] z-30 py-2 border-b border-[var(--pa-line)]" style={{ background: 'var(--color-background)' }}>
+                <div className="px-4 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                     {categories.map(category => (
-                        <button key={category.id} onClick={() => scrollToCategory(category.id)} style={corteAki(6)} className="shrink-0 px-3 py-1.5 bg-surface text-text-light text-[11px] font-bold uppercase tracking-wider whitespace-nowrap border border-text-light/10 active:bg-primary active:text-black">
+                        <button key={category.id} onClick={() => scrollToCategory(category.id)} style={corteAki(6)} className="shrink-0 px-3.5 py-2 bg-[var(--pa-chip)] text-[var(--pa-ink)] text-[12px] font-bold uppercase tracking-wider whitespace-nowrap active:bg-primary active:text-[var(--pa-on-primary)]">
                             {category.name}
                         </button>
                     ))}
@@ -526,8 +545,8 @@ const CategoryNav: React.FC<{ categories: Category[]; pedeAki?: boolean }> = ({ 
 };
 
 const PedeAkiBusca: React.FC<{ value: string; onChange: (val: string) => void }> = ({ value, onChange }) => (
-    <div id="tour-search" className="bg-background px-3 py-2 w-full shrink-0">
-        <label style={corteAki(6)} className="flex items-center bg-surface border border-text-light/15 focus-within:border-primary">
+    <div id="tour-search" className="px-4 pt-3 pb-1 w-full shrink-0">
+        <label style={corteAki(8)} className="flex items-center bg-surface border-2 border-[var(--pa-line)] focus-within:border-primary">
             <LucideSearch className="ml-3 shrink-0 text-text-light" size={18} />
             <input
                 id="busca-cardapio"
@@ -590,7 +609,7 @@ const MenuItemCard: React.FC<{ item: MenuItem; onAddItem: (item: MenuItem) => vo
                         {item.description && <p className="text-[12px] text-[var(--pa-ink-soft)] leading-snug line-clamp-2 mt-1">{sanitizeHtmlEntities(item.description)}</p>}
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                        <PrecoDoItem item={item} className="font-display text-[22px] leading-none text-[var(--pa-ink)] whitespace-nowrap" />
+                        <PrecoDoItem item={item} className="font-display text-[22px] leading-none text-[var(--color-primary-dark)] whitespace-nowrap" />
                         <button
                             onClick={handleAddClick}
                             disabled={isButtonDisabled}
@@ -656,7 +675,7 @@ const MenuSection: React.FC<{ category: Category; items: MenuItem[]; onAddItem: 
     if (items.length === 0) return null;
     if (pedeAki) {
         return (
-            <section id={`category-${category.id}`} className="px-4 pt-5 scroll-mt-40">
+            <section id={`category-${category.id}`} className="px-4 pt-5 scroll-mt-28">
                 <div className="flex items-center gap-2 mb-3">
                     <span className="w-2.5 h-2.5 bg-primary rotate-45" />
                     <h2 className="font-display text-[26px] tracking-wide uppercase leading-none text-text-light">{category.name}</h2>
@@ -2860,12 +2879,12 @@ const CustomerPage: React.FC<{ pedeAki?: boolean }> = ({ pedeAki = false }) => {
                 {pedeAki
                     ? <PedeAkiHeader settings={settings} onBack={window.location.pathname === '/' ? null : () => navigate('/')} />
                     : <Header onAdminClick={() => navigate('admin')} onMotoboyClick={() => navigate('entregador')} onWaiterClick={() => navigate('garcom')} settings={settings} onToggleTheme={toggleTheme} currentTheme={theme} />}
-                <DiscountBanner settings={settings} />
+                {!pedeAki && <DiscountBanner settings={settings} />}
                 {!pedeAki && <RaffleBanner settings={settings} />}
                 {!pedeAki && (isInstallable || isIOS) && <PWAInstallBanner onInstall={install} isIOS={isIOS} />}
                 {!pedeAki && <CustomerRecognitionBar onPhoneSubmit={handleHeroPhoneSubmit} isLoading={isSearchingCustomer} pedeAki={pedeAki} />}
-                {pedeAki ? <PedeAkiBusca value={searchTerm} onChange={setSearchTerm} /> : <ProductSearchBar value={searchTerm} onChange={setSearchTerm} />}
-                {!searchTerm && <CategoryNav categories={menu.categories} pedeAki={pedeAki} />}
+                {!pedeAki && <ProductSearchBar value={searchTerm} onChange={setSearchTerm} />}
+                {!pedeAki && !searchTerm && <CategoryNav categories={menu.categories} />}
             </div>
 
             {pedeAki ? (
@@ -2886,9 +2905,12 @@ const CustomerPage: React.FC<{ pedeAki?: boolean }> = ({ pedeAki = false }) => {
             )}
 
             {/* Fixed Height Spacer - Safest for mobile performance */}
-            <div className={pedeAki ? 'h-[150px]' : 'h-[260px] md:h-[220px]'}></div>
-            <main className={pedeAki ? 'pb-44 relative z-0 overflow-x-hidden w-full max-w-full' : 'pb-32 px-4 relative z-0 overflow-x-hidden w-full max-w-full'}>
+            <div className={pedeAki ? 'h-[56px]' : 'h-[260px] md:h-[220px]'}></div>
+            <main className={pedeAki ? 'pb-44 relative z-0 overflow-x-clip w-full max-w-full' : 'pb-32 px-4 relative z-0 overflow-x-hidden w-full max-w-full'}>
                 {pedeAki && !searchTerm && <PedeAkiInfoLoja settings={settings} loja={currentStore} aberta={isStoreOpen} mensagem={statusMessage} />}
+                {pedeAki && <DiscountBanner settings={settings} />}
+                {pedeAki && <PedeAkiBusca value={searchTerm} onChange={setSearchTerm} />}
+                {pedeAki && !searchTerm && <CategoryNav categories={menu.categories} pedeAki />}
                 {promotions.length > 0 && !searchTerm && (
                     <section id="category--1" className="w-full py-1 relative z-0 overflow-hidden">
                          {/* 3D Carousel Component - Reduced height to minimize yellow gap */}

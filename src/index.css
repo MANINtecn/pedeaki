@@ -31,133 +31,132 @@ html.light-mode {
 }
 
 /* PEDE AKI: tema das lojas de comissao. A classe tema-pedeaki vai no <html> pela pagina da loja, junto com
-   pa-<tema> (src/utils/temaDaLoja.ts). Paleta clara por categoria; o layout e o mesmo. Comida e o padrao.
+   pa-<tema> (src/utils/temaDaLoja.ts). Paleta clara e quente por categoria; o layout e o mesmo. Comida e o padrao.
    Mais forte que :root e html.light-mode, entao vale com o tema claro ou escuro do aparelho. */
 html.tema-pedeaki,
 html.tema-pedeaki.light-mode {
-  --color-background: #FFF6EC;
-  --color-surface: #FFFFFF;
-  --color-surface-hover: #FBEBDA;
-  --color-text-main: #2B1A10;
-  --color-text-muted: #7A6455;
+  --color-background: #FFEBD3;
+  --color-surface: #FFFBF4;
+  --color-surface-hover: #FFDDB6;
+  --color-text-main: #3B1D0A;
+  --color-text-muted: #8A5A3C;
   --color-primary: #F26B1D;
   --color-primary-dark: #C9540F;
-  --color-primary-light: #FF8A4D;
+  --color-primary-light: #FF9446;
   --color-secondary: #D94F2B;
-  --pa-card: #FFFFFF;
-  --pa-line: #EBD9C6;
-  --pa-ink: #2B1A10;
-  --pa-ink-soft: #7A6455;
-  --pa-on-primary: #1F120A;
-  --pa-nav: #FFFFFF;
+  --pa-card: #FFFBF4;
+  --pa-line: #F2CFA8;
+  --pa-ink: #3B1D0A;
+  --pa-ink-soft: #8A5A3C;
+  --pa-on-primary: #2B1204;
 }
 html.tema-pedeaki.pa-hortifruti,
 html.tema-pedeaki.pa-hortifruti.light-mode {
-  --color-background: #F1F8EC;
-  --color-surface: #FFFFFF;
-  --color-surface-hover: #E4F1DA;
+  --color-background: #E9F6DF;
+  --color-surface: #FBFFF7;
+  --color-surface-hover: #D8EEC8;
   --color-text-main: #14301C;
   --color-text-muted: #547060;
   --color-primary: #2E9E4F;
   --color-primary-dark: #237A3D;
   --color-primary-light: #4DBB6D;
   --color-secondary: #A3D133;
-  --pa-card: #FFFFFF;
-  --pa-line: #D5E6CB;
+  --pa-card: #FBFFF7;
+  --pa-line: #CBE3BC;
   --pa-ink: #14301C;
   --pa-ink-soft: #547060;
   --pa-on-primary: #0E2415;
-  --pa-nav: #FFFFFF;
 }
 html.tema-pedeaki.pa-farmacia,
 html.tema-pedeaki.pa-farmacia.light-mode {
-  --color-background: #ECF8F6;
-  --color-surface: #FFFFFF;
-  --color-surface-hover: #DAF0EC;
+  --color-background: #DFF4F0;
+  --color-surface: #F8FFFE;
+  --color-surface-hover: #C9EBE5;
   --color-text-main: #0E2F2B;
   --color-text-muted: #4E6F6A;
   --color-primary: #12A394;
   --color-primary-dark: #0D7D71;
   --color-primary-light: #34C2B3;
   --color-secondary: #4DA3FF;
-  --pa-card: #FFFFFF;
-  --pa-line: #CBE6E1;
+  --pa-card: #F8FFFE;
+  --pa-line: #BFE0DA;
   --pa-ink: #0E2F2B;
   --pa-ink-soft: #4E6F6A;
   --pa-on-primary: #062421;
-  --pa-nav: #FFFFFF;
 }
 html.tema-pedeaki.pa-agro,
 html.tema-pedeaki.pa-agro.light-mode {
-  --color-background: #F5F8E9;
-  --color-surface: #FFFFFF;
-  --color-surface-hover: #E8EFCF;
+  --color-background: #EEF4D8;
+  --color-surface: #FCFEF2;
+  --color-surface-hover: #E0EBBC;
   --color-text-main: #24300C;
   --color-text-muted: #5E6B3F;
   --color-primary: #7BA21B;
   --color-primary-dark: #5E7D12;
   --color-primary-light: #97BF3A;
   --color-secondary: #C9A227;
-  --pa-card: #FFFFFF;
-  --pa-line: #DDE5C0;
+  --pa-card: #FCFEF2;
+  --pa-line: #D5E0AE;
   --pa-ink: #24300C;
   --pa-ink-soft: #5E6B3F;
   --pa-on-primary: #1B2509;
-  --pa-nav: #FFFFFF;
 }
 html.tema-pedeaki.pa-presentes,
 html.tema-pedeaki.pa-presentes.light-mode {
-  --color-background: #FFF0F5;
-  --color-surface: #FFFFFF;
-  --color-surface-hover: #FFDFEA;
+  --color-background: #FFE6EF;
+  --color-surface: #FFFAFC;
+  --color-surface-hover: #FFD2E2;
   --color-text-main: #3A1224;
   --color-text-muted: #7B5666;
   --color-primary: #E0457B;
   --color-primary-dark: #B93262;
   --color-primary-light: #F06A98;
   --color-secondary: #FF7A59;
-  --pa-card: #FFFFFF;
-  --pa-line: #F3D2DE;
+  --pa-card: #FFFAFC;
+  --pa-line: #F3C6D6;
   --pa-ink: #3A1224;
   --pa-ink-soft: #7B5666;
   --pa-on-primary: #2E0C1B;
-  --pa-nav: #FFFFFF;
 }
 html.tema-pedeaki.pa-eventos,
 html.tema-pedeaki.pa-eventos.light-mode {
-  --color-background: #F4EEFF;
-  --color-surface: #FFFFFF;
-  --color-surface-hover: #E8DDFF;
+  --color-background: #EFE6FF;
+  --color-surface: #FDFBFF;
+  --color-surface-hover: #E0D2FF;
   --color-text-main: #26144A;
   --color-text-muted: #665A86;
   --color-primary: #8B5CF6;
   --color-primary-dark: #6D3FDB;
   --color-primary-light: #A98BFA;
   --color-secondary: #FF7A59;
-  --pa-card: #FFFFFF;
-  --pa-line: #DDD0F5;
+  --pa-card: #FDFBFF;
+  --pa-line: #D5C5F2;
   --pa-ink: #26144A;
   --pa-ink-soft: #665A86;
   --pa-on-primary: #FFFFFF;
-  --pa-nav: #FFFFFF;
 }
 html.tema-pedeaki.pa-utilidades,
 html.tema-pedeaki.pa-utilidades.light-mode {
-  --color-background: #EFF4FB;
-  --color-surface: #FFFFFF;
-  --color-surface-hover: #DFE9F7;
+  --color-background: #E6EEFA;
+  --color-surface: #FAFCFF;
+  --color-surface-hover: #D3E2F6;
   --color-text-main: #10223F;
   --color-text-muted: #52627F;
   --color-primary: #2F6FEB;
   --color-primary-dark: #2255C0;
   --color-primary-light: #5A8FF2;
   --color-secondary: #FF7A59;
-  --pa-card: #FFFFFF;
-  --pa-line: #D2DEEF;
+  --pa-card: #FAFCFF;
+  --pa-line: #C6D6EC;
   --pa-ink: #10223F;
   --pa-ink-soft: #52627F;
   --pa-on-primary: #FFFFFF;
-  --pa-nav: #FFFFFF;
+}
+/* cores derivadas da cor primaria da categoria: faixa do topo, chips e barra de baixo */
+html.tema-pedeaki {
+  --pa-hero: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-light) 100%);
+  --pa-chip: color-mix(in srgb, var(--color-primary) 16%, white);
+  --pa-nav: color-mix(in srgb, var(--color-primary) 7%, white);
 }
 html.tema-pedeaki body { font-family: 'Space Grotesk', 'Inter', sans-serif; background: var(--color-background); }
 /* cantos menos redondos, como o resto do Pede Aki */
