@@ -26,7 +26,15 @@ export async function tratar({ authorization, corpo, env, buscar }) {
     if (!o.asaas_payment_id || o.payment_status !== 'pago') return { status: 200, corpo: { estornado: false, motivo: 'nada a estornar' } };
     if (o.status !== 'Cancelado') return { status: 409, corpo: { erro: 'Cancele o pedido antes de estornar.' } };
 
-    await asaas(`/payments/${o.asaas_payment_id}/refund`, 'POST', { description: 'Pedido cancelado pela loja' });
+    try {
+        await asaas(`/payments/${o.asaas_payment_id}/refund`, 'POST', { description: 'Pedido cancelado pela loja' });
+    } catch (e) {
+        // Estorno recusado (ex.: saldo da conta do Asaas menor que o valor): fica marcado para o Super Admin resolver na mao.
+        await sup(`/rest/v1/orders?id=eq.${encodeURIComponent(orderId)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ payment_status: 'estorno_pendente' }) });
+        await sup(`/rest/v1/pagamentos?asaas_payment_id=eq.${encodeURIComponent(o.asaas_payment_id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'ESTORNO_FALHOU', atualizado_em: new Date().toISOString() }) });
+        console.error('asaas-estornar recusado', e.message);
+        return { status: 409, corpo: { estornado: false, erro: 'O Asaas recusou o estorno. A plataforma foi avisada e vai devolver o valor.' } };
+    }
     await sup(`/rest/v1/orders?id=eq.${encodeURIComponent(orderId)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ payment_status: 'estornando' }) });
     await sup(`/rest/v1/pagamentos?asaas_payment_id=eq.${encodeURIComponent(o.asaas_payment_id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'ESTORNO_SOLICITADO', atualizado_em: new Date().toISOString() }) });
     return { status: 200, corpo: { estornado: true } };
