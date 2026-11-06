@@ -122,12 +122,12 @@ export const LojasSecao: React.FC = () => {
     };
 
     const linkDaLoja = (slug: string) => `${window.location.origin}/${slug}`;
-    const pacote = (c: { slug: string; email: string; senha: string }) => `Acesso ao painel da sua loja no Pede Aqui\nEndereço: ${linkDaLoja(c.slug)}/admin\nLogin: ${c.email}\nSenha: ${c.senha}`;
+    const pacote = (c: { slug: string; email: string; senha: string }) => `Acesso ao painel da sua loja no Pede Aki\nEndereço: ${linkDaLoja(c.slug)}/admin\nLogin: ${c.email}\nSenha: ${c.senha}`;
     const seletorDeTipo = (valor: TipoDeLoja, aoMudar: (t: TipoDeLoja) => void) => (
         <div>
             <label className="block text-sm font-medium text-gray-400 mb-1">Modelo da loja</label>
             <select value={valor} onChange={e => aoMudar(e.target.value as TipoDeLoja)} className={campoBase}>
-                <option value="comissao">Comissão (Pede Aqui, sem mensalidade)</option>
+                <option value="comissao">Comissão (Pede Aki, sem mensalidade)</option>
                 <option value="pdv_basico">PDV Básico (mensalidade)</option>
                 <option value="pdv_avancado">PDV Avançado (mensalidade)</option>
             </select>
@@ -350,7 +350,7 @@ export const LojasSecao: React.FC = () => {
                             </div>
                             <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
                                 <input type="checkbox" checked={editForm.aparecer_no_shopping} onChange={e => setEditForm({ ...editForm, aparecer_no_shopping: e.target.checked })} className="h-4 w-4" />
-                                Aparecer no shopping (Pede Aqui)
+                                Aparecer no shopping (Pede Aki)
                             </label>
                             <div className="flex items-center space-x-3 bg-gray-700 p-3 rounded-lg">
                                 <input type="checkbox" id="isActive" checked={editForm.is_active} onChange={e => setEditForm({ ...editForm, is_active: e.target.checked })} className="h-5 w-5 rounded text-blue-500 bg-gray-600 border-gray-500 focus:ring-blue-500" />

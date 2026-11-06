@@ -20,7 +20,7 @@ const LoginPage: React.FC = () => {
   const location = useLocation();
   const { storeSlug } = useParams();
 
-  // loja sem logo mostra a marca do Pede Aqui, nunca a de outra loja
+  // loja sem logo mostra a marca do Pede Aki, nunca a de outra loja
   const marca = useMarca();
   const logoDaPlataforma = marca.logo_url || ICONE_PADRAO;
   const storeLogo = currentStore?.logo_url || (currentStore as any)?.logoUrl || logoDaPlataforma;

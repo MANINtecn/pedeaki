@@ -34,7 +34,7 @@ const SECOES: SecaoLegal[] = [
             'O cadastro deve ser feito por quem tem poderes para representar o negócio, com dados verdadeiros e atualizados. A senha é pessoal: o que for feito com ela é de sua responsabilidade. Avise-nos se suspeitar de acesso indevido.',
             'Você é responsável por tudo o que publica: cardápio, preços, fotos, promoções, horários, áreas e taxas de entrega, e por cumprir as leis que valem para a sua atividade (sanitárias, de consumo, fiscais e trabalhistas, inclusive emissão de nota fiscal quando exigida).',
             'Você se compromete a atender os pedidos aceitos pelo sistema ou cancelá-los com um motivo verdadeiro, a manter o painel aberto no horário de funcionamento e a tratar com cuidado os dados dos Clientes, usando-os somente para entregar o pedido e atender o Cliente.',
-            'Os pedidos entram no painel já aceitos. A plataforma audita cancelamentos para evitar que pedidos feitos pelo Pede Aqui sejam desviados.',
+            'Os pedidos entram no painel já aceitos. A plataforma audita cancelamentos para evitar que pedidos feitos pelo Pede Aki sejam desviados.',
         ],
     },
     {
@@ -50,7 +50,7 @@ const SECOES: SecaoLegal[] = [
     {
         titulo: 'Condutas proibidas',
         itens: [
-            'Combinar com o Cliente, por fora da plataforma, a compra de um pedido que veio pelo Pede Aqui para não pagar a comissão, ou cancelar pedidos sem motivo real com a mesma finalidade.',
+            'Combinar com o Cliente, por fora da plataforma, a compra de um pedido que veio pelo Pede Aki para não pagar a comissão, ou cancelar pedidos sem motivo real com a mesma finalidade.',
             'Criar pedidos falsos, tentar burlar limites de segurança, acessar dados de outras lojas ou de outros usuários, ou tentar interferir no funcionamento do serviço.',
             'Publicar conteúdo ilegal, enganoso, ofensivo ou que infrinja direitos de terceiros, inclusive imagens e marcas sem autorização.',
             'Usar a plataforma para vender produtos proibidos ou que exijam licença que o Estabelecimento não tem.',
@@ -99,7 +99,7 @@ const SECOES: SecaoLegal[] = [
 const TermosPage: React.FC = () => (
     <LegalLayout
         titulo="Termos de Uso"
-        resumo="Resumo: o Pede Aqui é a ferramenta que liga o Cliente ao Estabelecimento. Quem vende e entrega é a loja. O Estabelecimento paga uma comissão sobre os produtos de cada pedido feito pela plataforma, e o dinheiro recebido na mão vira um débito de comissão. Leia o texto completo abaixo."
+        resumo="Resumo: o Pede Aki é a ferramenta que liga o Cliente ao Estabelecimento. Quem vende e entrega é a loja. O Estabelecimento paga uma comissão sobre os produtos de cada pedido feito pela plataforma, e o dinheiro recebido na mão vira um débito de comissão. Leia o texto completo abaixo."
         secoes={SECOES}
         outra={{ para: '/privacidade', rotulo: 'Política de Privacidade' }}
     />

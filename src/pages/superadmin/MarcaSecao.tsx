@@ -63,7 +63,7 @@ export const MarcaSecao: React.FC = () => {
         <div className="space-y-8">
             <div>
                 <h1 className="text-3xl font-bold text-white">Marca</h1>
-                <p className="text-sm text-gray-400 mt-1">A logo e as cores do Pede Aqui. Aparecem no shopping, na aba do navegador das telas da plataforma e no app instalado quando a loja não tem logo própria. Cada loja continua com a logo dela.</p>
+                <p className="text-sm text-gray-400 mt-1">A logo e as cores do Pede Aki. Aparecem no shopping, na aba do navegador das telas da plataforma e no app instalado quando a loja não tem logo própria. Cada loja continua com a logo dela.</p>
             </div>
 
             <div className="grid lg:grid-cols-2 gap-6">
@@ -106,7 +106,7 @@ export const MarcaSecao: React.FC = () => {
                     <div className="rounded-xl border border-gray-700 bg-gray-800 p-4">
                         <p className="text-xs text-gray-500 mb-2">Aba do navegador</p>
                         <div className="inline-flex items-center gap-2 rounded-t-lg bg-gray-700 px-3 py-2 text-xs text-gray-100">
-                            <img src={icone} alt="" className="h-4 w-4 object-contain" /> {rascunho.nome.toUpperCase() || 'PEDE AQUI'}
+                            <img src={icone} alt="" className="h-4 w-4 object-contain" /> {rascunho.nome.toUpperCase() || 'PEDE AKI'}
                         </div>
                     </div>
                     <div className="rounded-xl border border-gray-700 bg-white p-4 text-gray-900">
@@ -114,7 +114,7 @@ export const MarcaSecao: React.FC = () => {
                         <div className="flex items-center justify-between">
                             <span className="flex items-center gap-2 font-black text-lg">
                                 <span className="h-8 w-8 rounded-xl overflow-hidden flex items-center justify-center" style={{ background: rascunho.logo_url ? 'transparent' : gradiente }}><img src={icone} alt="" className="h-full w-full object-contain" /></span>
-                                {rascunho.nome || 'Pede Aqui'}
+                                {rascunho.nome || 'Pede Aki'}
                             </span>
                             <span className="rounded-full px-4 py-2 text-sm font-bold" style={{ background: corValida(rascunho.cor_primaria) ? rascunho.cor_primaria : MARCA_PADRAO.cor_primaria, color: textoSobre(rascunho.cor_primaria) }}>Sou lojista</span>
                         </div>

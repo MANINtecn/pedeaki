@@ -30,7 +30,7 @@ const SECOES: SecaoLegal[] = [
             'Prevenir fraude, pedidos falsos, abuso e acesso indevido, e proteger a segurança do serviço (legítimo interesse e prevenção à fraude).',
             'Cumprir obrigações legais e regulatórias e exercer direitos em processos (obrigação legal e exercício regular de direitos).',
             'Enviar avisos do serviço, como notificações de pedido novo ao Estabelecimento, e mensagens sobre o pedido (execução do contrato e consentimento, no caso da notificação do aparelho).',
-            'Mostrar a loja e os produtos no shopping do Pede Aqui (legítimo interesse do Estabelecimento e da plataforma).',
+            'Mostrar a loja e os produtos no shopping do Pede Aki (legítimo interesse do Estabelecimento e da plataforma).',
         ],
         depois: ['Não vendemos dados pessoais e não usamos rastreamento de publicidade.'],
     },

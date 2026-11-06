@@ -3,7 +3,7 @@
  * depois, o servidor perguntam aqui. Para mudar o que entra em cada plano, mexe-se SÓ nesta tabela.
  *
  * Modelos:
- *   comissao  Pede Aqui, sem mensalidade: recebe pedidos, o app cobra comissão. Painel enxuto, sem PDV.
+ *   comissao  Pede Aki, sem mensalidade: recebe pedidos, o app cobra comissão. Painel enxuto, sem PDV.
  *   pdv       Mensalidade, plano Básico ou Avançado, link próprio e SEM comissão.
  *
  * ATENÇÃO: a divisão Básico x Avançado abaixo é PROVISÓRIA (o Ikarus ainda vai definir o que entra em cada um).

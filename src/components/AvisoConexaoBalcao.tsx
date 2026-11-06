@@ -88,7 +88,7 @@ export const AvisoConexaoBalcao: React.FC = () => {
     const copiar = async () => {
         const fila = vendasNaFila();
         const texto = [
-            'Pede Aqui - relatório de conexão',
+            'Pede Aki - relatório de conexão',
             `Loja: ${nomeDaLoja()}`,
             `Computador: ${identificadorMaquina()}`,
             `Gerado em: ${new Date().toLocaleString('pt-BR')}`,

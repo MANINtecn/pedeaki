@@ -77,7 +77,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // We only do this if there is NO subdomain slug. If there IS a subdomain, we want to load the store context even on /admin.
         const reservedPaths = ['/admin', '/login', '/cadastro', '/shopping', '/vitrine', '/perfil', '/redefinir_senha', '/termos', '/privacidade', '/entrar', '/super-admin', '/staff', '/acesso', '/hub-equipe', '/portal-equipe', '/garcom', '/entregador'];
         const isReserved = reservedPaths.some(p => location.pathname.toLowerCase().startsWith(p)) && !slug;
-        // Em tela da plataforma (sem loja na rota) a identidade da aba é a do Pede Aqui, mesmo que uma loja tenha sido vista antes.
+        // Em tela da plataforma (sem loja na rota) a identidade da aba é a do Pede Aki, mesmo que uma loja tenha sido vista antes.
         setSlugDaRota(isReserved || !slug ? null : slug);
 
         if (isReserved) {
@@ -129,7 +129,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const marca = useMarca();
     useEffect(() => { carregarMarca(); }, []);
 
-    // Ícone da aba, título, cor do navegador e manifesto do app instalado: loja atual ou, sem loja, a marca do Pede Aqui.
+    // Ícone da aba, título, cor do navegador e manifesto do app instalado: loja atual ou, sem loja, a marca do Pede Aki.
     useEffect(() => {
         aplicarIdentidade(slugDaRota && currentStore && currentStore.slug === slugDaRota ? currentStore : null);
     }, [currentStore, slugDaRota, marca]);

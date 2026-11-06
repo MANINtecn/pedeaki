@@ -57,7 +57,7 @@ export const LayoutDaCentral: React.FC = () => (
         <div className="min-h-screen bg-gray-900 text-gray-100 md:flex">
             <aside className="hidden md:flex md:w-60 shrink-0 flex-col border-r border-gray-800 bg-gray-950 p-4">
                 <div className="mb-6 px-2">
-                    <p className="text-lg font-black text-white">Pede Aqui</p>
+                    <p className="text-lg font-black text-white">Pede Aki</p>
                     <p className="text-xs font-bold uppercase tracking-wide text-blue-400">Central de gestão</p>
                 </div>
                 <nav className="space-y-1 flex-1">

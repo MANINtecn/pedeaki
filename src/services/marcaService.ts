@@ -6,7 +6,7 @@
  * não tem acesso ao contexto do React (serviço de impressão, textos soltos).
  */
 export const MARCA = {
-    produto: 'Pede Aqui',
+    produto: 'Pede Aki',
     site: 'pedeaki.tecx.pro',
     suporte: 'TECX SISTEMAS',
 };

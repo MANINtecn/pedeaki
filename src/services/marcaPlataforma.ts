@@ -1,16 +1,16 @@
 /**
- * Marca da plataforma (logo e cores do Pede Aqui), definida no Super Admin e lida por todo o site.
+ * Marca da plataforma (logo e cores do Pede Aki), definida no Super Admin e lida por todo o site.
  *
- * Regra de identidade: telas da plataforma mostram a marca do Pede Aqui; telas de uma loja mostram a marca
- * da loja; loja sem logo mostra a do Pede Aqui (nunca a de outra loja).
+ * Regra de identidade: telas da plataforma mostram a marca do Pede Aki; telas de uma loja mostram a marca
+ * da loja; loja sem logo mostra a do Pede Aki (nunca a de outra loja).
  */
 import { useSyncExternalStore } from 'react';
 import { supabase } from './supabaseService';
 
 export type MarcaPlataforma = { nome: string; logo_url: string | null; cor_primaria: string; cor_secundaria: string };
 
-export const MARCA_PADRAO: MarcaPlataforma = { nome: 'Pede Aqui', logo_url: null, cor_primaria: '#ea580c', cor_secundaria: '#f59e0b' };
-/** Ícone padrão da plataforma (o emblema da logo do Pede Aqui). A logo definida no Super Admin vale por cima dele. */
+export const MARCA_PADRAO: MarcaPlataforma = { nome: 'Pede Aki', logo_url: null, cor_primaria: '#ea580c', cor_secundaria: '#f59e0b' };
+/** Ícone padrão da plataforma (o emblema da logo do Pede Aki). A logo definida no Super Admin vale por cima dele. */
 export const ICONE_PADRAO = '/pedeaqui-icone.png';
 
 const CHAVE_CACHE = 'pedeaqui_marca';
@@ -108,7 +108,7 @@ const pegarLink = (seletor: string, rel: string): HTMLLinkElement => {
 
 /**
  * Aplica o ícone da aba, a cor do navegador, o título e o manifesto do app instalado.
- * Com loja: logo e nome da loja (se a loja não tem logo, a da plataforma). Sem loja: a marca do Pede Aqui.
+ * Com loja: logo e nome da loja (se a loja não tem logo, a da plataforma). Sem loja: a marca do Pede Aki.
  */
 export function aplicarIdentidade(loja: { name?: string | null; slug?: string | null; logo_url?: string | null } | null) {
     if (typeof document === 'undefined') return;

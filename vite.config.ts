@@ -79,8 +79,8 @@ export default defineConfig(({ mode }) => ({
         ]
       },
       manifest: {
-        name: 'Pede Aqui',
-        short_name: 'Pede Aqui',
+        name: 'Pede Aki',
+        short_name: 'Pede Aki',
         description: 'Peça pelo celular nas lojas da sua cidade.',
         theme_color: '#ea580c',
         background_color: '#fff8f1',

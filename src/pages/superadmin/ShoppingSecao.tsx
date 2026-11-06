@@ -3,7 +3,7 @@ import { updateStoreSubscription } from '../../services/supabaseService';
 import { tipoDaLoja, ROTULO_DO_TIPO } from '../../services/recursos';
 import { usePlataforma } from './dados';
 
-/** A vitrine do Pede Aqui: quem aparece, quem está pronto para aparecer e quem aparece sem estar pronto. */
+/** A vitrine do Pede Aki: quem aparece, quem está pronto para aparecer e quem aparece sem estar pronto. */
 export const ShoppingSecao: React.FC = () => {
     const d = usePlataforma();
 
@@ -19,7 +19,7 @@ export const ShoppingSecao: React.FC = () => {
         <div className="space-y-6">
             <div>
                 <h1 className="text-3xl font-bold text-white">Shopping</h1>
-                <p className="text-sm text-gray-400 mt-1">A vitrine do Pede Aqui. Uma loja só deve aparecer com o cardápio pronto. {naVitrine.length} na vitrine, {prontas.length} pronta{prontas.length === 1 ? '' : 's'} para entrar.</p>
+                <p className="text-sm text-gray-400 mt-1">A vitrine do Pede Aki. Uma loja só deve aparecer com o cardápio pronto. {naVitrine.length} na vitrine, {prontas.length} pronta{prontas.length === 1 ? '' : 's'} para entrar.</p>
             </div>
 
             <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-x-auto">

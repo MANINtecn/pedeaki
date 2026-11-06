@@ -12,7 +12,7 @@ export const EMPRESA = {
     uf: 'TO',
 };
 
-export const PRODUTO = 'Pede Aqui';
+export const PRODUTO = 'Pede Aki';
 export const SITE = 'pedeaki.tecx.pro';
 
 /** Versão dos textos. Guardada no aparelho do cliente e nos dados da conta do lojista ao aceitar. */

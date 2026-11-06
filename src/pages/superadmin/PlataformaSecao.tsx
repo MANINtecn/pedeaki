@@ -27,7 +27,7 @@ export const PlataformaSecao: React.FC = () => (
             <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
                 <p className="text-xs font-bold uppercase text-orange-300">Comissão</p>
                 <p className="text-2xl font-bold text-white mt-1">Sem mensalidade</p>
-                <p className="text-sm text-gray-400 mt-2">Tudo que se cadastra no Pede Aqui. Pagamento online com divisão; dinheiro vira débito. Painel enxuto para o celular.</p>
+                <p className="text-sm text-gray-400 mt-2">Tudo que se cadastra no Pede Aki. Pagamento online com divisão; dinheiro vira débito. Painel enxuto para o celular.</p>
             </div>
             <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
                 <p className="text-xs font-bold uppercase text-blue-300">PDV Básico</p>

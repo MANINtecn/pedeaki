@@ -13,7 +13,7 @@ export interface Store {
   };
   // SaaS Fields
   subscription_end_date?: string;
-  /** Modelo de venda: 'comissao' (Pede Aqui, sem mensalidade) ou 'pdv' (mensalidade, Básico ou Avançado). Loja antiga sem o campo = PDV completo. */
+  /** Modelo de venda: 'comissao' (Pede Aki, sem mensalidade) ou 'pdv' (mensalidade, Básico ou Avançado). Loja antiga sem o campo = PDV completo. */
   modelo?: 'comissao' | 'pdv';
   /** Só no modelo PDV. Loja de comissão não tem plano. */
   plan?: 'basico' | 'avancado' | null;

@@ -2311,7 +2311,7 @@ export const ownsStore = async (storeId: string): Promise<boolean | null> => {
     return data === true;
 };
 
-// --- Shopping (Pede Aqui): lojas e produtos de todas as lojas que aparecem no shopping ---
+// --- Shopping (Pede Aki): lojas e produtos de todas as lojas que aparecem no shopping ---
 export interface LojaShopping {
     id: string; name: string; slug: string; logo_url?: string | null;
     categoria?: string | null; cidade?: string | null; subscription_end_date?: string | null;

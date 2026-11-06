@@ -47,7 +47,7 @@ export const AcessoDoDono: React.FC<{ store: Store; onMudou: () => void }> = ({ 
     };
 
     const link = `${window.location.origin}/${store.slug}/admin`;
-    const pacote = entregar ? `Acesso ao painel da sua loja no Pede Aqui\nEndereço: ${link}\nLogin: ${entregar.email}\nSenha: ${entregar.senha}` : '';
+    const pacote = entregar ? `Acesso ao painel da sua loja no Pede Aki\nEndereço: ${link}\nLogin: ${entregar.email}\nSenha: ${entregar.senha}` : '';
     const livres = logins.filter(l => l.id !== store.owner_id);
 
     const campoSenha = (
