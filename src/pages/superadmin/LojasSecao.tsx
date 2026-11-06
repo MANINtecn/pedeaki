@@ -7,12 +7,25 @@ import { CamposFinanceiros } from './CamposFinanceiros';
 import { AcessoDoDono } from './AcessoDoDono';
 import { chamarAdmin, gerarSenha, useLogins } from './logins';
 import { Janela, BotaoCancelar, BotaoPrincipal } from './Janela';
-import { FIN_PADRAO, VALOR_PADRAO, CATEGORIAS_LOJA, SLUGS_RESERVADOS, limparSlug, brl, pct, type FormFinanceiro } from './util';
+import { FIN_PADRAO, VALOR_PADRAO, CATEGORIAS_LOJA, DICAS_POR_CATEGORIA, SLUGS_RESERVADOS, limparSlug, brl, pct, type FormFinanceiro } from './util';
 
 const PlusIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>;
 const EditIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>;
 
 const campoBase = 'w-full bg-gray-700 border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500';
+
+const DicasDaCategoria: React.FC<{ categoria: string }> = ({ categoria }) => {
+    const dicas = DICAS_POR_CATEGORIA[categoria];
+    if (!dicas) return null;
+    return (
+        <div className="mt-2 rounded-lg border border-orange-500/30 bg-orange-500/10 p-3">
+            <p className="text-xs font-bold uppercase tracking-wide text-orange-300 mb-1.5">Dicas para {categoria}</p>
+            <ul className="list-disc pl-4 space-y-1 text-xs text-gray-300">
+                {dicas.map(d => <li key={d}>{d}</li>)}
+            </ul>
+        </div>
+    );
+};
 
 export const LojasSecao: React.FC = () => {
     const { stores, financeiros, padroes, cardapio, recarregar } = usePlataforma();
@@ -294,6 +307,7 @@ export const LojasSecao: React.FC = () => {
                                         <option value="">Selecione</option>
                                         {CATEGORIAS_LOJA.map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
+                                    <DicasDaCategoria categoria={newStore.categoria} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-400 mb-1">Cidade</label>
@@ -342,6 +356,7 @@ export const LojasSecao: React.FC = () => {
                                         <option value="">Sem categoria</option>
                                         {CATEGORIAS_LOJA.map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
+                                    <DicasDaCategoria categoria={editForm.categoria} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-400 mb-1">Cidade</label>

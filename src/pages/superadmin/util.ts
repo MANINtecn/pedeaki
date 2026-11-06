@@ -12,7 +12,47 @@ export const FIN_PADRAO: FormFinanceiro = { comissao_pct_propria: 8, comissao_pc
 
 /** Valor mensal sugerido de cada PDV (editável na criação). A loja de comissão não tem mensalidade. */
 export const VALOR_PADRAO: Record<'pdv_basico' | 'pdv_avancado', number> = { pdv_basico: 199, pdv_avancado: 499 };
-export const CATEGORIAS_LOJA = ['Lanchonete', 'Sorveteria / Açaí', 'Pizzaria', 'Restaurante', 'Padaria', 'Agropecuária', 'Outros'];
+export const CATEGORIAS_LOJA = ['Lanchonete', 'Sorveteria / Açaí', 'Pizzaria', 'Restaurante', 'Padaria', 'Hortifruti', 'Agropecuária', 'Farmácia', 'Presentes e flores', 'Outros'];
+
+/** Lembretes que aparecem ao escolher a categoria da loja (como montar o cardápio e o que combinar com o lojista). */
+export const DICAS_POR_CATEGORIA: Record<string, string[]> = {
+    'Hortifruti': [
+        'Venda por cestas e kits de preço fixo: Cesta de frutas, Cesta de verduras, Kit feira da semana (preço fixo resolve o preço que muda todo dia e a venda por quilo, que o sistema ainda não faz).',
+        'Mais 10 a 15 itens por unidade ou pacote: dúzia de banana, bandeja de ovos, maço de cheiro-verde, caixa de tomate.',
+        'Só item que o motoboy consegue levar. Combinar com o lojista quem entrega (ele, o app ou retirada).',
+        'Itens do dia em falta: o lojista marca indisponível, ou recusa o pedido em 1 toque.',
+    ],
+    'Agropecuária': [
+        'Cadastrar só os 30 a 40 itens que mais saem, de preço estável. Cada marca e tamanho vira um item (ração 25 kg, 15 kg...).',
+        'Não listar remédio veterinário controlado nem agrotóxico: exigem receita.',
+        'Saco pesado: deixar só para retirada na loja ou combinar o frete.',
+        'Escolher junto com o lojista no papel e tirar a foto de cada item com o celular dele, na hora.',
+    ],
+    'Farmácia': [
+        'Não listar remédio que exige receita nem controlado. Começar por higiene, cuidado pessoal e vendas livres.',
+        'Cadastrar só os mais vendidos, de preço estável.',
+    ],
+    'Pizzaria': [
+        'Hoje o app NÃO tem meio a meio nem preço por tamanho e sabor. Fase A: um produto por sabor em categorias por tamanho (Pizzas Médias, Pizzas Grandes). Meio a meio ainda não.',
+        'Borda recheada e extras entram como complemento adicional (pago).',
+        'Perguntar: tamanhos, quantos sabores no meio a meio, preço do meio a meio e tempo de preparo.',
+    ],
+    'Sorveteria / Açaí': [
+        'Açaí e picolé já têm complementos em passos (sabor, opcional, adicional). Cada sabor extra conta como outra unidade.',
+        'Fotos boas do copo e do açaí montado vendem mais que a lista de complementos.',
+    ],
+    'Lanchonete': [
+        'Cadastrar o cardápio completo, com foto nos 10 itens mais vendidos.',
+        'Combos (lanche + batata + refri) com preço fechado ajudam o ticket médio.',
+    ],
+    'Padaria': [
+        'Itens por unidade ou pacote (pão francês 10 un., bolo inteiro). Por quilo real ainda não existe.',
+    ],
+    'Presentes e flores': [
+        'Aqui vale o catálogo completo com foto: o cliente escolhe olhando. Cestas e arranjos com preço fechado.',
+    ],
+};
+
 // Endereços que já são rotas do app: não podem virar link de loja.
 export const SLUGS_RESERVADOS = ['admin', 'login', 'super-admin', 'staff', 'acesso', 'hub-equipe', 'portal-equipe', 'garcom', 'waiter', 'entregador', 'tv', 'cadastro', 'shopping', 'redefinir_senha', 'assets', 'public'];
 
