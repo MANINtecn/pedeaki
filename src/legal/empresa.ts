@@ -6,18 +6,18 @@
 export const EMPRESA = {
     nome: 'TECX SISTEMAS',
     razaoSocial: '',   // ex.: 'TECX SISTEMAS LTDA'
-    cnpj: '',          // ex.: '00.000.000/0001-00'
-    email: '',         // e-mail de contato e do encarregado de dados (LGPD)
-    cidade: '',        // ex.: 'Palmas'
-    uf: 'TO',
+    cnpj: '39.748.426/0001-63',
+    email: 'pedeakiofc@gmail.com', // e-mail de contato e do encarregado de dados (LGPD)
+    cidade: 'Ubá',
+    uf: 'MG',
 };
 
 export const PRODUTO = 'Pede Aki';
 export const SITE = 'pedeaki.tecx.pro';
 
 /** Versão dos textos. Guardada no aparelho do cliente e nos dados da conta do lojista ao aceitar. */
-export const VERSAO_TERMOS = '2026-11-03';
-export const DATA_TERMOS = '3 de novembro de 2026';
+export const VERSAO_TERMOS = '2026-11-06';
+export const DATA_TERMOS = '6 de novembro de 2026';
 
 export const identificacaoDaEmpresa = (): string => {
     const nome = EMPRESA.razaoSocial || EMPRESA.nome;
