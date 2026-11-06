@@ -384,7 +384,6 @@ const RaffleBanner: React.FC<{ settings: Partial<Settings> | null }> = ({ settin
 const horaCurta = (t?: string) => (t || '').slice(0, 5);
 
 const PedeAkiInfoLoja: React.FC<{ settings: Partial<Settings> | null; loja: any; aberta: boolean; mensagem: string }> = ({ settings, loja, aberta }) => {
-    const taxa = Number(settings?.deliveryFee) || 0;
     const minimo = Number(settings?.minOrderValue) || 0;
     const abre = horaCurta(settings?.openingTime);
     const fecha = horaCurta(settings?.closingTime);
@@ -405,8 +404,7 @@ const PedeAkiInfoLoja: React.FC<{ settings: Partial<Settings> | null; loja: any;
                 <h2 className="font-display text-[24px] tracking-wide uppercase leading-none">{nomeDaLoja()}</h2>
                 {loja?.categoria && <p className="text-[12px] text-[var(--pa-ink-soft)] leading-none">{[loja.categoria, loja.cidade].filter(Boolean).join(' • ')}</p>}
                 <span style={corteAki(5)} className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-white ${aberta ? 'bg-[#1E9E53]' : 'bg-[#D92D20]'}`}>{aberta ? 'Aberto agora' : 'Fechada agora'}</span>
-                <div className="grid grid-cols-3 gap-1.5 w-full mt-0.5">
-                    {caixa('Entrega', taxa > 0 ? `R$ ${taxa.toFixed(2).replace('.', ',')}` : 'Pelo bairro')}
+                <div className="grid grid-cols-2 gap-1.5 w-full mt-0.5">
                     {caixa('Mínimo', minimo > 0 ? `R$ ${minimo.toFixed(2).replace('.', ',')}` : 'Sem mínimo')}
                     {caixa('Horário', abre && fecha ? `${abre} às ${fecha}` : 'Consulte', !aberta)}
                 </div>
@@ -2862,7 +2860,7 @@ const CustomerPage: React.FC<{ pedeAki?: boolean }> = ({ pedeAki = false }) => {
             <div className={pedeAki ? 'fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-background shadow-md overflow-hidden' : 'fixed top-0 left-0 right-0 z-40 bg-background shadow-md overflow-hidden'}>
                 {!pedeAki && <StoreStatusBanner isOpen={isStoreOpen} message={statusMessage} />}
                 {pedeAki
-                    ? <PedeAkiHeader settings={settings} onBack={window.location.pathname === '/' ? null : () => navigate('/')} />
+                    ? <PedeAkiHeader settings={settings} onBack={window.location.pathname === '/' ? null : () => { if ((window.history.state?.idx ?? 0) > 0) navigate(-1); else navigate('/'); }} />
                     : <Header onAdminClick={() => navigate('admin')} onMotoboyClick={() => navigate('entregador')} onWaiterClick={() => navigate('garcom')} settings={settings} onToggleTheme={toggleTheme} currentTheme={theme} />}
                 {!pedeAki && <DiscountBanner settings={settings} />}
                 {!pedeAki && <RaffleBanner settings={settings} />}

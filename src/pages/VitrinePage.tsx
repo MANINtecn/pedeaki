@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigationType } from 'react-router-dom';
 import {
     MapPin, Search, UtensilsCrossed, Leaf, Pill, Tractor, Gift, PartyPopper,
     Plus, Home, ShoppingCart, User, ArrowRight, Megaphone,
@@ -12,6 +12,12 @@ import { statusDaLoja, type InfoLojaShopping } from '../utils/lojaAberta';
 // patrocínio ainda não existem como dado, por isso não aparecem aqui (nada de preço inventado).
 
 const CIDADE_FIXA = 'Tocantins, MG'; // até a cidade automática por localização existir
+
+// Guardados na memória e no aparelho: ao voltar de uma loja (botão voltar do celular) a lista aparece na hora e
+// na mesma posição, sem tela de carregando.
+let cacheLojas: LojaShopping[] | null = null;
+let cacheInfos: Record<string, InfoLojaShopping> = {};
+const CHAVE_ROLAGEM = 'pedeaki_vitrine_rolagem';
 
 const semAcento = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -40,9 +46,10 @@ const Imagem: React.FC<{ loja: LojaShopping; className?: string }> = ({ loja, cl
 };
 
 const VitrinePage: React.FC = () => {
-    const [lojas, setLojas] = useState<LojaShopping[] | null>(null);
+    const [lojas, setLojas] = useState<LojaShopping[] | null>(cacheLojas);
+    const tipoDeNavegacao = useNavigationType();
     const [texto, setTexto] = useState('');
-    const [infos, setInfos] = useState<Record<string, InfoLojaShopping>>({});
+    const [infos, setInfos] = useState<Record<string, InfoLojaShopping>>(cacheInfos);
     const faixa = useRef<HTMLDivElement>(null);
     const campo = useRef<HTMLInputElement>(null);
     const lista = useRef<HTMLElement>(null);
@@ -57,9 +64,9 @@ const VitrinePage: React.FC = () => {
         return () => { document.head.removeChild(l); };
     }, []);
 
-    useEffect(() => { fetchLojasShopping().then(setLojas).catch(() => setLojas([])); }, []);
+    useEffect(() => { fetchLojasShopping().then(l => { cacheLojas = l; setLojas(l); }).catch(() => setLojas(atual => atual ?? [])); }, []);
     useEffect(() => {
-        fetchInfoLojasShopping().then(lista => setInfos(Object.fromEntries(lista.map(i => [i.store_id, i])))).catch(() => { /* sem info: a vitrine mostra so o basico */ });
+        fetchInfoLojasShopping().then(lista => { const mapa = Object.fromEntries(lista.map(i => [i.store_id, i])); cacheInfos = mapa; setInfos(mapa); }).catch(() => { /* sem info: a vitrine mostra so o basico */ });
     }, []);
 
     const termo = semAcento(texto.trim());
@@ -97,6 +104,19 @@ const VitrinePage: React.FC = () => {
         setPos(Math.min(destaques.length - 1, Math.round(el.scrollLeft / (filho.offsetWidth + 12))));
     };
 
+    // Volta (POP) para a vitrine: devolve a rolagem de onde a pessoa saiu.
+    const rolagemRestaurada = useRef(false);
+    useEffect(() => {
+        if (lojas === null || rolagemRestaurada.current) return;
+        rolagemRestaurada.current = true;
+        if (tipoDeNavegacao !== 'POP') return;
+        try {
+            const y = Number(sessionStorage.getItem(CHAVE_ROLAGEM) || 0);
+            if (y > 0) requestAnimationFrame(() => window.scrollTo(0, y));
+        } catch { /* sem armazenamento: fica no topo */ }
+    }, [lojas, tipoDeNavegacao]);
+    const guardarRolagem = () => { try { sessionStorage.setItem(CHAVE_ROLAGEM, String(window.scrollY)); } catch { /* tudo bem */ } };
+
     const irParaLojas = () => lista.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     const irParaBusca = () => { window.scrollTo({ top: 0, behavior: 'smooth' }); campo.current?.focus(); };
 
@@ -132,7 +152,7 @@ const VitrinePage: React.FC = () => {
     );
 
     return (
-        <div className="min-h-screen flex justify-center bg-[#0B0910]" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>
+        <div onClickCapture={guardarRolagem} className="min-h-screen flex justify-center bg-[#0B0910]" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>
             <div className="w-full max-w-[390px] min-h-screen bg-[#110E15] text-[#F7EFE4] border-x border-[#241F2B] flex flex-col pb-24 overflow-x-hidden">
 
                 {/* Topo */}
