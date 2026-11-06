@@ -18,7 +18,8 @@ import {
     Users, Search as LucideSearch, ArrowRight as LucideArrowRight,
     Sun, Moon, Trash2 as LucideTrash, ArrowLeft as LucideArrowLeft
 } from 'lucide-react';
-import { PagamentoPixOnline } from '../components/PagamentoPixOnline';
+import { PagamentoPixOnline, PixPendentePill } from '../components/PagamentoPixOnline';
+import { salvarPixPendente, limparPixPendente, lerPixPendente, type PixPendente } from '../utils/pixPendente';
 import { telefoneDoAparelho, guardarTelefoneDoAparelho, telefoneBonito } from '../utils/telefoneCliente';
 import { temaDaCategoria } from '../utils/temaDaLoja';
 import { normalizeString } from '../utils/searchUtils';
@@ -996,7 +997,10 @@ const SideCart: React.FC<{
         const [isSubmitting, setIsSubmitting] = useState(false);
         const [showSuccess, setShowSuccess] = useState(false);
         const [lastOrderId, setLastOrderId] = useState<string | undefined>(undefined);
-        const [pagandoOnline, setPagandoOnline] = useState<{ pedido: { id: string; phone: string; total: number }; resgate: any; desconto: number; telefoneOriginal: string; criado: any } | null>(null);
+        // PIX pendente guardado no aparelho: se o cliente sair para o app do banco, a tela volta quando ele voltar.
+        const [pendente, setPendente] = useState<PixPendente | null>(() => lerPixPendente(storeId));
+        const [mostrarPix, setMostrarPix] = useState<boolean>(() => !!lerPixPendente(storeId));
+        const encerrarPix = () => { limparPixPendente(); setPendente(null); setMostrarPix(false); };
         const [submitMessage, setSubmitMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
         const minOrderValue = settings?.minOrderValue ?? MIN_ORDER_VALUE;
 
@@ -1138,7 +1142,11 @@ const SideCart: React.FC<{
                 }
 
                 if (createdOrder && createdOrder.status === 'Aguardando pagamento') {
-                    setPagandoOnline({ pedido: { id: String(createdOrder.id), phone: finalPhone, total: Number(createdOrder.total) || total }, resgate: resgateDoPedido, desconto: orderDiscount, telefoneOriginal: phone, criado: createdOrder });
+                    const novo: PixPendente = {
+                        storeId, pedido: { id: String(createdOrder.id), phone: finalPhone, total: Number(createdOrder.total) || total, pagarAte: createdOrder.pagar_ate || createdOrder.pagarAte || new Date(Date.now() + 15 * 60000).toISOString() },
+                        orderData, criado: createdOrder, resgate: resgateDoPedido, desconto: orderDiscount, telefoneOriginal: phone,
+                    };
+                    salvarPixPendente(novo); setPendente(novo); setMostrarPix(true);
                     return;
                 }
 
@@ -1183,10 +1191,10 @@ const SideCart: React.FC<{
 
         // PIX confirmado: agora sim o pedido vale (resgate de pontos, webhook e carrinho limpo).
         const aoPagarOnline = async () => {
-            const dados = pagandoOnline;
-            setPagandoOnline(null);
+            const dados = pendente;
+            encerrarPix();
             if (!dados) return;
-            executarEfeitosDoPedidoOnline(dados.pedido.id);
+            executarEfeitosDoPedidoOnline(dados.pedido.id, { order: dados.orderData, frontendOrder: dados.criado });
             if (dados.desconto > 0 || (pendingReward && pendingReward.type === 'item')) {
                 try {
                     await concluirResgateDoPedido({ pendingReward: dados.resgate, descontoAplicado: dados.desconto, phone: dados.pedido.phone, storeId, orderId: dados.pedido.id });
@@ -1433,7 +1441,7 @@ const SideCart: React.FC<{
                                     />
                                 )}
 
-                                {paymentMethod === 'PIX' && (
+                                {paymentMethod === 'PIX' && currentStore?.modelo !== 'comissao' && (
                                     <div className="bg-surface rounded p-3 flex flex-col gap-2 border border-primary/20">
                                         <div className="flex items-start gap-2">
                                             <span className="text-yellow-500">ℹ️</span>
@@ -1482,7 +1490,16 @@ const SideCart: React.FC<{
                     )}
                 </div>
                 <SuccessModal isOpen={showSuccess} onClose={handleCloseSuccess} orderId={lastOrderId} isRatingEnabled={settings?.isRatingEnabled ?? true} />
-                {pagandoOnline && <PagamentoPixOnline pedido={pagandoOnline.pedido} onPago={aoPagarOnline} onVoltar={() => setPagandoOnline(null)} />}
+                {pendente && mostrarPix && (
+                    <PagamentoPixOnline
+                        pedido={pendente.pedido} qrInicial={pendente.qr}
+                        onQr={(qr, pagarAte) => { const atual = { ...pendente, qr, pedido: { ...pendente.pedido, pagarAte: pagarAte || pendente.pedido.pagarAte } }; salvarPixPendente(atual); setPendente(atual); }}
+                        onPago={aoPagarOnline} onExpirou={encerrarPix} onVoltar={() => setMostrarPix(false)}
+                    />
+                )}
+                {pendente && !mostrarPix && pendente.pedido.pagarAte && (
+                    <PixPendentePill pagarAte={pendente.pedido.pagarAte} total={pendente.pedido.total} onAbrir={() => setMostrarPix(true)} onExpirou={encerrarPix} />
+                )}
             </>
         );
     };

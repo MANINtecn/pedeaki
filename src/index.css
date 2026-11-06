@@ -35,20 +35,20 @@ html.light-mode {
    Mais forte que :root e html.light-mode, entao vale com o tema claro ou escuro do aparelho. */
 html.tema-pedeaki,
 html.tema-pedeaki.light-mode {
-  --color-background: #FFEBD3;
-  --color-surface: #FFFBF4;
-  --color-surface-hover: #FFDDB6;
-  --color-text-main: #3B1D0A;
-  --color-text-muted: #8A5A3C;
+  --color-background: #F3F3F1;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #E8E8E5;
+  --color-text-main: #1A1A1A;
+  --color-text-muted: #6B6B68;
   --color-primary: #F26B1D;
-  --color-primary-dark: #C9540F;
-  --color-primary-light: #FF9446;
+  --color-primary-dark: #D1560F;
+  --color-primary-light: #FF8F4A;
   --color-secondary: #D94F2B;
-  --pa-card: #FFFBF4;
-  --pa-line: #F2CFA8;
-  --pa-ink: #3B1D0A;
-  --pa-ink-soft: #8A5A3C;
-  --pa-on-primary: #2B1204;
+  --pa-card: #FFFFFF;
+  --pa-line: #DEDEDA;
+  --pa-ink: #1A1A1A;
+  --pa-ink-soft: #6B6B68;
+  --pa-on-primary: #1F1F1F;
 }
 html.tema-pedeaki.pa-hortifruti,
 html.tema-pedeaki.pa-hortifruti.light-mode {

@@ -7,7 +7,10 @@ import { supabase } from '../services/supabaseService';
  */
 interface Props {
     pedido: { id: string; phone: string; total: number; pagarAte?: string | null };
+    qrInicial?: { imagem: string; copiaCola: string };
+    onQr?: (qr: { imagem: string; copiaCola: string }, pagarAte: string | null) => void;
     onPago: () => void;
+    onExpirou?: () => void;
     onVoltar: () => void;
 }
 
@@ -21,11 +24,11 @@ const mascara = (v: string) => {
 const lerCpf = () => { try { return localStorage.getItem(CHAVE_CPF) || ''; } catch { return ''; } };
 const guardarCpf = (v: string) => { try { localStorage.setItem(CHAVE_CPF, v); } catch { /* sem armazenamento: digita de novo na proxima */ } };
 
-export const PagamentoPixOnline = ({ pedido, onPago, onVoltar }: Props) => {
+export const PagamentoPixOnline = ({ pedido, qrInicial, onQr, onPago, onExpirou, onVoltar }: Props) => {
     const [cpf, setCpf] = useState(lerCpf());
-    const [fase, setFase] = useState<'cpf' | 'gerando' | 'qr' | 'expirou'>('cpf');
+    const [fase, setFase] = useState<'cpf' | 'gerando' | 'qr' | 'expirou'>(qrInicial ? 'qr' : 'cpf');
     const [erro, setErro] = useState('');
-    const [qr, setQr] = useState<{ imagem: string; copiaCola: string } | null>(null);
+    const [qr, setQr] = useState<{ imagem: string; copiaCola: string } | null>(qrInicial || null);
     const [pagarAte, setPagarAte] = useState<number>(pedido.pagarAte ? new Date(pedido.pagarAte).getTime() : Date.now() + 15 * 60000);
     const [agora, setAgora] = useState(Date.now());
     const [copiado, setCopiado] = useState(false);
@@ -41,7 +44,9 @@ export const PagamentoPixOnline = ({ pedido, onPago, onVoltar }: Props) => {
             if (!r.ok) { setErro(j.erro || 'Não foi possível gerar o PIX. Tente de novo.'); setFase('cpf'); return; }
             guardarCpf(so(cpf));
             if (j.pagar_ate) setPagarAte(new Date(j.pagar_ate).getTime());
-            setQr({ imagem: j.qr_imagem, copiaCola: j.copia_cola });
+            const novoQr = { imagem: j.qr_imagem as string, copiaCola: j.copia_cola as string };
+            setQr(novoQr);
+            onQr?.(novoQr, j.pagar_ate || null);
             setFase('qr');
         } catch {
             setErro('Sem conexão. Tente de novo.'); setFase('cpf');
@@ -56,13 +61,13 @@ export const PagamentoPixOnline = ({ pedido, onPago, onVoltar }: Props) => {
             try {
                 const { data } = await supabase.rpc('pedido_status', { p_order: pedido.id, p_phone: pedido.phone });
                 if (data?.payment_status === 'pago' && !avisou.current) { avisou.current = true; onPago(); }
-                else if (data?.status === 'Expirado') setFase('expirou');
+                else if (data?.status === 'Expirado' || data?.status === 'Cancelado') { setFase('expirou'); onExpirou?.(); }
             } catch { /* tenta de novo no proximo ciclo */ }
         }, 3000);
         return () => { clearInterval(relogio); clearInterval(conferir); };
     }, [fase, pedido.id, pedido.phone, onPago]);
 
-    useEffect(() => { if (fase === 'qr' && agora > pagarAte + 20000) setFase('expirou'); }, [agora, pagarAte, fase]);
+    useEffect(() => { if (fase === 'qr' && agora > pagarAte + 20000) { setFase('expirou'); onExpirou?.(); } }, [agora, pagarAte, fase, onExpirou]);
 
     const falta = Math.max(0, Math.floor((pagarAte - agora) / 1000));
     const relogio = `${String(Math.floor(falta / 60)).padStart(2, '0')}:${String(falta % 60).padStart(2, '0')}`;
@@ -116,5 +121,21 @@ export const PagamentoPixOnline = ({ pedido, onPago, onVoltar }: Props) => {
                 )}
             </div>
         </div>
+    );
+};
+
+/** Selo que fica na tela enquanto existe um PIX pendente e a janela de pagamento esta fechada. */
+export const PixPendentePill = ({ pagarAte, total, onAbrir, onExpirou }: { pagarAte: string; total: number; onAbrir: () => void; onExpirou: () => void }) => {
+    const [agora, setAgora] = useState(Date.now());
+    useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 1000); return () => clearInterval(t); }, []);
+    const limite = new Date(pagarAte).getTime();
+    const falta = Math.max(0, Math.floor((limite - agora) / 1000));
+    useEffect(() => { if (agora > limite + 20000) onExpirou(); }, [agora, limite, onExpirou]);
+    if (falta <= 0) return null;
+    const relogio = `${String(Math.floor(falta / 60)).padStart(2, '0')}:${String(falta % 60).padStart(2, '0')}`;
+    return (
+        <button onClick={onAbrir} className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[65] px-4 py-2 rounded-full bg-primary text-background text-sm font-bold shadow-lg active:scale-95">
+            PIX aguardando pagamento: R$ {total.toFixed(2).replace('.', ',')} ({relogio}). Abrir
+        </button>
     );
 };

@@ -1130,10 +1130,44 @@ const dosGarcom = (storeId?: string) => (sessaoGarcom && (!storeId || storeId ==
 // Efeitos que so valem depois do pedido pago (aviso por webhook, pontos de fidelidade, nota): ficam guardados
 // ate o PIX confirmar. Se a pessoa fechar a pagina antes, o pedido continua valido, so esses extras nao rodam.
 const efeitosDoPedidoOnline = new Map<string, () => void>();
-export const executarEfeitosDoPedidoOnline = (orderId: string) => {
+const efeitosPosPedido = (order: any, frontendOrder: any) => {
+    // Trigger Webhook for New Order (Non-blocking)
+    if (order.store_id) {
+        fetchPublicSettings(order.store_id).then(settings => {
+            if (settings.webhookNewOrderUrl) {
+                triggerWebhook(settings.webhookNewOrderUrl, {
+                    ...frontendOrder,
+                    customer_phone: frontendOrder.phone,
+                    phone: frontendOrder.phone
+                }).catch(e => console.error("Error triggering new order webhook:", e));
+            }
+
+            // Fidelidade por pontos: so quando o modelo estiver ativo, so
+            // pedidos do site/app (nao balcao), e nunca bloqueando a venda
+            // se der erro -- fidelidade e bonus, nao pode derrubar pedido.
+            const ehDoSite = frontendOrder.origin === 'WEB' || frontendOrder.origin === 'APP';
+            if (settings.loyaltyModel === 'pontos' && ehDoSite && frontendOrder.phone && frontendOrder.id) {
+                creditarPontosDoPedido(frontendOrder.id, frontendOrder.phone, order.store_id, frontendOrder.total)
+                    .catch(e => console.error("Error crediting loyalty points:", e));
+            }
+        }).catch(e => console.error("Error fetching settings for webhook:", e));
+
+        // NFC-e (Fase 2, 28/09/2026): so tenta se a loja tiver fiscal_config
+        // com emissao habilitada (ambiente configurado + provedor escolhido).
+        // NUNCA bloqueia a venda -- se a Sefaz/API fiscal falhar, a nota fica
+        // 'pendente'/'contingencia' no banco e o pedido segue normal. Regra
+        // de ouro (skill nfce, item 7): grava ANTES de chamar a API.
+        dispararEmissaoNotaFiscal(frontendOrder, order.store_id).catch(e =>
+            console.error('[NFC-e] Erro ao disparar emissao (pedido segue normal):', e)
+        );
+    }
+};
+/** Roda os efeitos guardados na memoria; se a pagina recarregou, roda de novo com os dados do pedido guardados no aparelho. */
+export const executarEfeitosDoPedidoOnline = (orderId: string, reserva?: { order: any; frontendOrder: any }) => {
     const f = efeitosDoPedidoOnline.get(orderId);
     efeitosDoPedidoOnline.delete(orderId);
     if (f) f();
+    else if (reserva) efeitosPosPedido(reserva.order, reserva.frontendOrder);
 };
 
 export const createOrder = async (order: any, opcoes?: { online?: boolean }) => {
@@ -1180,38 +1214,7 @@ export const createOrder = async (order: any, opcoes?: { online?: boolean }) => 
 
     const frontendOrder = mapOrderFromDB(data);
 
-    const efeitosDoPedido = () => {
-    // Trigger Webhook for New Order (Non-blocking)
-    if (order.store_id) {
-        fetchPublicSettings(order.store_id).then(settings => {
-            if (settings.webhookNewOrderUrl) {
-                triggerWebhook(settings.webhookNewOrderUrl, {
-                    ...frontendOrder,
-                    customer_phone: frontendOrder.phone,
-                    phone: frontendOrder.phone
-                }).catch(e => console.error("Error triggering new order webhook:", e));
-            }
-
-            // Fidelidade por pontos: so quando o modelo estiver ativo, so
-            // pedidos do site/app (nao balcao), e nunca bloqueando a venda
-            // se der erro -- fidelidade e bonus, nao pode derrubar pedido.
-            const ehDoSite = frontendOrder.origin === 'WEB' || frontendOrder.origin === 'APP';
-            if (settings.loyaltyModel === 'pontos' && ehDoSite && frontendOrder.phone && frontendOrder.id) {
-                creditarPontosDoPedido(frontendOrder.id, frontendOrder.phone, order.store_id, frontendOrder.total)
-                    .catch(e => console.error("Error crediting loyalty points:", e));
-            }
-        }).catch(e => console.error("Error fetching settings for webhook:", e));
-
-        // NFC-e (Fase 2, 28/09/2026): so tenta se a loja tiver fiscal_config
-        // com emissao habilitada (ambiente configurado + provedor escolhido).
-        // NUNCA bloqueia a venda -- se a Sefaz/API fiscal falhar, a nota fica
-        // 'pendente'/'contingencia' no banco e o pedido segue normal. Regra
-        // de ouro (skill nfce, item 7): grava ANTES de chamar a API.
-        dispararEmissaoNotaFiscal(frontendOrder, order.store_id).catch(e =>
-            console.error('[NFC-e] Erro ao disparar emissao (pedido segue normal):', e)
-        );
-    }
-    };
+    const efeitosDoPedido = () => efeitosPosPedido(order, frontendOrder);
     if (opcoes?.online && frontendOrder.id) { efeitosDoPedidoOnline.set(String(frontendOrder.id), efeitosDoPedido); return frontendOrder; }
     efeitosDoPedido();
 
