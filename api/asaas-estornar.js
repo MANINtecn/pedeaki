@@ -26,6 +26,15 @@ export async function tratar({ authorization, corpo, env, buscar }) {
     if (!o.asaas_payment_id || o.payment_status !== 'pago') return { status: 200, corpo: { estornado: false, motivo: 'nada a estornar' } };
     if (o.status !== 'Cancelado') return { status: 409, corpo: { erro: 'Cancele o pedido antes de estornar.' } };
 
+    // Entrega do Pede Aki ja retirada pelo motoboy: cancelamento tardio, sem devolucao automatica (o suporte decide).
+    try {
+        const entregas = await sup(`/rest/v1/entregas_app?order_id=eq.${encodeURIComponent(orderId)}&select=status`);
+        if (entregas && entregas[0] && ['retirada', 'entregue', 'frustrada'].includes(entregas[0].status)) {
+            await sup(`/rest/v1/orders?id=eq.${encodeURIComponent(orderId)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ payment_status: 'estorno_pendente' }) });
+            return { status: 409, corpo: { estornado: false, erro: 'O motoboy ja retirou este pedido. A devolucao e decidida pelo suporte do Pede Aki.' } };
+        }
+    } catch (e) { /* tabela de entregas ainda nao existe (SQL 18 nao rodado): segue o fluxo normal */ }
+
     try {
         await asaas(`/payments/${o.asaas_payment_id}/refund`, 'POST', { description: 'Pedido cancelado pela loja' });
     } catch (e) {

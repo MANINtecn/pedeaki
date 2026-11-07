@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
-import { LayoutDashboard, Store, Percent, Receipt, Activity, Globe, Settings, LogOut, Lock, Palette } from 'lucide-react';
+import { LayoutDashboard, Store, Percent, Receipt, Activity, Globe, Settings, LogOut, Lock, Palette, Bike } from 'lucide-react';
 import { supabase } from '../../services/supabaseService';
 import { PlataformaProvider, usePlataforma } from './dados';
 import { VisaoGeralSecao } from './VisaoGeralSecao';
@@ -11,12 +11,14 @@ import { SaudeSecao } from './SaudeSecao';
 import { ShoppingSecao } from './ShoppingSecao';
 import { PlataformaSecao } from './PlataformaSecao';
 import { MarcaSecao } from './MarcaSecao';
+import { MotoboysSecao } from './MotoboysSecao';
 
 const ITENS = [
     { para: '/super-admin', fim: true, rotulo: 'Visão geral', Icone: LayoutDashboard },
     { para: '/super-admin/lojas', rotulo: 'Lojas', Icone: Store },
     { para: '/super-admin/comissoes', rotulo: 'Comissões', Icone: Percent },
     { para: '/super-admin/pedidos', rotulo: 'Pedidos', Icone: Receipt },
+    { para: '/super-admin/motoboys', rotulo: 'Motoboys', Icone: Bike },
     { para: '/super-admin/saude', rotulo: 'Saúde das lojas', Icone: Activity },
     { para: '/super-admin/shopping', rotulo: 'Shopping', Icone: Globe },
     { para: '/super-admin/plataforma', rotulo: 'Plataforma', Icone: Settings },
@@ -36,6 +38,7 @@ const Corpo: React.FC = () => {
             <Route path="lojas" element={<LojasSecao />} />
             <Route path="comissoes" element={<ComissoesSecao />} />
             <Route path="pedidos" element={<PedidosSecao />} />
+            <Route path="motoboys" element={<MotoboysSecao />} />
             <Route path="saude" element={<SaudeSecao />} />
             <Route path="shopping" element={<ShoppingSecao />} />
             <Route path="plataforma" element={<PlataformaSecao />} />

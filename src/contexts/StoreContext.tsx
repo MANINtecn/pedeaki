@@ -67,7 +67,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         // Link por loja: /<slug>, /<slug>/admin... A rota global (/admin, /login, /super-admin...)
         // não é loja. O caminho vale mais que o subdomínio e que o padrão do Electron/localhost.
-        const rotasGlobais = ['admin', 'login', 'super-admin', 'staff', 'acesso', 'hub-equipe', 'portal-equipe', 'garcom', 'waiter', 'entregador', 'tv', 'cadastro', 'shopping', 'vitrine', 'perfil', 'redefinir_senha', 'termos', 'privacidade', 'entrar'];
+        const rotasGlobais = ['admin', 'login', 'super-admin', 'staff', 'acesso', 'hub-equipe', 'portal-equipe', 'garcom', 'waiter', 'entregador', 'tv', 'cadastro', 'shopping', 'vitrine', 'perfil', 'motoboy', 'redefinir_senha', 'termos', 'privacidade', 'entrar'];
         const primeiroSegmento = location.pathname.split('/').filter(Boolean)[0]?.toLowerCase();
         if (primeiroSegmento && !rotasGlobais.includes(primeiroSegmento)) {
             slug = primeiroSegmento;
@@ -75,7 +75,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         // QUICK EXIT FOR STAFF ROUTES - No loading, no fetching, instantly clean.
         // We only do this if there is NO subdomain slug. If there IS a subdomain, we want to load the store context even on /admin.
-        const reservedPaths = ['/admin', '/login', '/cadastro', '/shopping', '/vitrine', '/perfil', '/redefinir_senha', '/termos', '/privacidade', '/entrar', '/super-admin', '/staff', '/acesso', '/hub-equipe', '/portal-equipe', '/garcom', '/entregador'];
+        const reservedPaths = ['/admin', '/login', '/cadastro', '/shopping', '/vitrine', '/perfil', '/motoboy', '/redefinir_senha', '/termos', '/privacidade', '/entrar', '/super-admin', '/staff', '/acesso', '/hub-equipe', '/portal-equipe', '/garcom', '/entregador'];
         const isReserved = reservedPaths.some(p => location.pathname.toLowerCase().startsWith(p)) && !slug;
         // Em tela da plataforma (sem loja na rota) a identidade da aba é a do Pede Aki, mesmo que uma loja tenha sido vista antes.
         setSlugDaRota(isReserved || !slug ? null : slug);

@@ -10,7 +10,7 @@ import {
 import { 
     rateOrder, fetchPublicSettings, fetchActivePromotions, createOrder, triggerWebhook,
     fetchMenuForCustomer, fetchCustomerByPhone, fetchLastOrderByPhone, fetchCustomerLoyaltyHistory,
-    concluirResgateDoPedido, executarEfeitosDoPedidoOnline, verificarResgatePendente, resgateEfetivo, upsertCustomer, fetchDynamicDeliveryFee, fetchDeliveryZones, zonaDoEndereco, canonicalPhone
+    supabase, concluirResgateDoPedido, executarEfeitosDoPedidoOnline, verificarResgatePendente, resgateEfetivo, upsertCustomer, fetchDynamicDeliveryFee, fetchDeliveryZones, zonaDoEndereco, canonicalPhone
 } from '../services/supabaseService';
 import { 
     ShoppingCart as LucideShoppingCart, X as LucideX, 
@@ -19,6 +19,7 @@ import {
     Sun, Moon, Trash2 as LucideTrash, ArrowLeft as LucideArrowLeft
 } from 'lucide-react';
 import { PagamentoPixOnline, PixPendentePill } from '../components/PagamentoPixOnline';
+import { CodigoEntregaPill, guardarPedidoAtivo } from '../components/CodigoEntregaPill';
 import { salvarPixPendente, limparPixPendente, lerPixPendente, type PixPendente } from '../utils/pixPendente';
 import { telefoneDoAparelho, guardarTelefoneDoAparelho, telefoneBonito } from '../utils/telefoneCliente';
 import { temaDaCategoria } from '../utils/temaDaLoja';
@@ -1004,10 +1005,22 @@ const SideCart: React.FC<{
 
         // Formas de pagamento da loja de comissao: so as que o administrador ligou (PIX, dinheiro e, em breve, cartao online).
         const ehComissao = currentStore?.modelo === 'comissao';
+        const entregaPedeAki = ehComissao && currentStore?.entrega_modo === 'app';
+        // Entrega pelo motoboy do Pede Aki: so oferece se houver motoboy online agora (confere ao abrir e a cada 30 s)
+        const [motoboyOnline, setMotoboyOnline] = useState<boolean | null>(null);
+        useEffect(() => {
+            if (!entregaPedeAki) { setMotoboyOnline(null); return; }
+            let vivo = true;
+            const conferir = async () => { try { const { data } = await supabase.rpc('entrega_app_disponivel'); if (vivo) setMotoboyOnline(data === true); } catch { /* sem resposta: nao bloqueia */ } };
+            conferir();
+            const t = setInterval(conferir, 30000);
+            return () => { vivo = false; clearInterval(t); };
+        }, [entregaPedeAki]);
+        const semMotoboy = entregaPedeAki && orderType === 'Entrega' && motoboyOnline === false;
         const formasComissao: { valor: PaymentMethod; titulo: string; detalhe: string }[] = [
             ...(currentStore?.pagamento_pix !== false ? [{ valor: 'PIX' as PaymentMethod, titulo: 'PIX', detalhe: 'Pague agora pelo app' }] : []),
             ...(currentStore?.pagamento_cartao === true ? [{ valor: 'Cartão' as PaymentMethod, titulo: 'Cartão', detalhe: 'Pague agora pelo app' }] : []),
-            ...(currentStore?.aceita_dinheiro !== false ? [{ valor: 'Dinheiro' as PaymentMethod, titulo: 'Dinheiro', detalhe: 'Pague na entrega' }] : []),
+            ...(currentStore?.aceita_dinheiro !== false && !(entregaPedeAki && orderType === 'Entrega') ? [{ valor: 'Dinheiro' as PaymentMethod, titulo: 'Dinheiro', detalhe: 'Pague na entrega' }] : []),
         ];
         const chaveFormas = formasComissao.map(f => f.valor).join('|');
         useEffect(() => {
@@ -1063,9 +1076,10 @@ const SideCart: React.FC<{
             if (!paymentMethod) return false; // forma de pagamento e' obrigatoria, sem padrao pre-selecionado
             if (paymentMethod === 'Dinheiro' && !semTroco && (!changeFor || parseFloat(changeFor) < total)) return false;
             if (ehComissao && formasComissao.length === 0) return false;
+            if (semMotoboy) return false;
             if (orderType === 'Entrega' && total < minOrderValue) return false;
             return true;
-        }, [customerName, phone, orderType, deliveryZones, selectedZoneId, address, houseNumber, referencePoint, paymentMethod, changeFor, semTroco, ehComissao, chaveFormas, total, minOrderValue]);
+        }, [customerName, phone, orderType, deliveryZones, selectedZoneId, address, houseNumber, referencePoint, paymentMethod, changeFor, semTroco, ehComissao, chaveFormas, semMotoboy, total, minOrderValue]);
 
 
         const handleSubmit = async (e: React.FormEvent) => {
@@ -1213,6 +1227,7 @@ const SideCart: React.FC<{
             encerrarPix();
             if (!dados) return;
             executarEfeitosDoPedidoOnline(dados.pedido.id, { order: dados.orderData, frontendOrder: dados.criado });
+            if (entregaPedeAki && dados.orderData?.orderType === 'Entrega') guardarPedidoAtivo({ orderId: dados.pedido.id, phone: dados.pedido.phone, storeId });
             if (dados.desconto > 0 || (pendingReward && pendingReward.type === 'item')) {
                 try {
                     await concluirResgateDoPedido({ pendingReward: dados.resgate, descontoAplicado: dados.desconto, phone: dados.pedido.phone, storeId, orderId: dados.pedido.id });
@@ -1366,6 +1381,9 @@ const SideCart: React.FC<{
                                     </button>
                                 </div>
 
+                                {semMotoboy && (
+                                    <p className="rounded bg-red-50 border border-red-300 p-2 text-xs font-semibold text-red-700">Não há motoboy disponível agora. Escolha Retirar ou tente de novo em alguns minutos.</p>
+                                )}
                                 {ehComissao ? (
                                     <div>
                                         <p className="text-[11px] font-bold text-text-light mb-1">Forma de pagamento <span className="text-red-500">*</span></p>
@@ -1555,6 +1573,7 @@ const SideCart: React.FC<{
                         onPago={aoPagarOnline} onExpirou={encerrarPix} onVoltar={() => setMostrarPix(false)}
                     />
                 )}
+                <CodigoEntregaPill storeId={storeId} />
                 {pendente && !mostrarPix && pendente.pedido.pagarAte && (
                     <PixPendentePill pagarAte={pendente.pedido.pagarAte} total={pendente.pedido.total} onAbrir={() => setMostrarPix(true)} onExpirou={encerrarPix} />
                 )}
