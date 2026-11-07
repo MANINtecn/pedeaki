@@ -19,6 +19,11 @@ export interface Store {
   plan?: 'basico' | 'avancado' | null;
   /** Falso quando o débito do dinheiro passou do limite: o checkout esconde a opção Dinheiro. */
   aceita_dinheiro?: boolean;
+  /** Controles do administrador (SQL 17). Ausente = comportamento antigo. PIX ligado por padrao; cartao online desligado. */
+  pagamento_pix?: boolean;
+  pagamento_cartao?: boolean;
+  /** Quem entrega nas lojas de comissao: o proprio lojista ('propria') ou o motoboy do Pede Aki ('app'). */
+  entrega_modo?: 'propria' | 'app';
   categoria?: string;
   cidade?: string;
   aparecer_no_shopping?: boolean;

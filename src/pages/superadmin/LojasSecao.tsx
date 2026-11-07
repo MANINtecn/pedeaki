@@ -43,8 +43,8 @@ export const LojasSecao: React.FC = () => {
         categoria: '', cidade: '', aparecer_no_shopping: false, fin,
     });
     const [newStore, setNewStore] = useState(novoFormulario());
-    const [editForm, setEditForm] = useState<{ tipo: TipoDeLoja; plan_value: number; subscription_end_date: string; is_active: boolean; categoria: string; cidade: string; aparecer_no_shopping: boolean; aceita_dinheiro: boolean; fin: FormFinanceiro }>({
-        tipo: 'pdv_avancado', plan_value: 0, subscription_end_date: '', is_active: true, categoria: '', cidade: '', aparecer_no_shopping: false, aceita_dinheiro: true, fin: FIN_PADRAO,
+    const [editForm, setEditForm] = useState<{ tipo: TipoDeLoja; plan_value: number; subscription_end_date: string; is_active: boolean; categoria: string; cidade: string; aparecer_no_shopping: boolean; aceita_dinheiro: boolean; pagamento_pix: boolean; pagamento_cartao: boolean; entrega_modo: 'propria' | 'app'; fin: FormFinanceiro }>({
+        tipo: 'pdv_avancado', plan_value: 0, subscription_end_date: '', is_active: true, categoria: '', cidade: '', aparecer_no_shopping: false, aceita_dinheiro: true, pagamento_pix: true, pagamento_cartao: false, entrega_modo: 'propria', fin: FIN_PADRAO,
     });
 
     const handleCreateStore = async () => {
@@ -107,6 +107,8 @@ export const LojasSecao: React.FC = () => {
                 cidade: editForm.cidade.trim() || null,
                 aparecer_no_shopping: editForm.aparecer_no_shopping,
                 aceita_dinheiro: comissao ? editForm.aceita_dinheiro : true,
+                // controles do SQL 17: so vao se a coluna ja existe (a loja carregada traz o campo)
+                ...(comissao && editingStore.entrega_modo !== undefined ? { pagamento_pix: editForm.pagamento_pix, pagamento_cartao: editForm.pagamento_cartao, entrega_modo: editForm.entrega_modo } : {}),
                 subscription_end_date: comissao ? null : (editForm.subscription_end_date ? new Date(editForm.subscription_end_date + 'T23:59:59').toISOString() : null),
             });
             if (comissao) await salvarFinanceiro(editingStore.id, editForm.fin);
@@ -130,6 +132,9 @@ export const LojasSecao: React.FC = () => {
             cidade: store.cidade || '',
             aparecer_no_shopping: store.aparecer_no_shopping ?? false,
             aceita_dinheiro: store.aceita_dinheiro ?? true,
+            pagamento_pix: store.pagamento_pix ?? true,
+            pagamento_cartao: store.pagamento_cartao ?? false,
+            entrega_modo: store.entrega_modo ?? 'propria',
             fin: { ...finPadroes(), ...(financeiros[store.id] ? { ...financeiros[store.id] } : {}) } as FormFinanceiro,
         });
     };
@@ -382,6 +387,28 @@ export const LojasSecao: React.FC = () => {
                                         <input type="checkbox" checked={editForm.aceita_dinheiro} onChange={e => setEditForm({ ...editForm, aceita_dinheiro: e.target.checked })} className="h-4 w-4" />
                                         Aceitar pagamento em dinheiro (desmarque para bloquear a opção Dinheiro no checkout)
                                     </label>
+                                    {editingStore.entrega_modo !== undefined ? (
+                                        <div className="space-y-2 rounded-lg bg-gray-800/60 p-3">
+                                            <p className="text-xs font-bold text-gray-300">Formas de pagamento no checkout desta loja</p>
+                                            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                                                <input type="checkbox" checked={editForm.pagamento_pix} onChange={e => setEditForm({ ...editForm, pagamento_pix: e.target.checked })} className="h-4 w-4" />
+                                                PIX (online quando a loja tem carteira no Asaas)
+                                            </label>
+                                            <label className="flex items-center gap-2 text-sm text-gray-500">
+                                                <input type="checkbox" checked={editForm.pagamento_cartao} onChange={e => setEditForm({ ...editForm, pagamento_cartao: e.target.checked })} className="h-4 w-4" disabled />
+                                                Cartão online (em breve)
+                                            </label>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-400 mb-1">Quem faz a entrega</label>
+                                                <select value={editForm.entrega_modo} onChange={e => setEditForm({ ...editForm, entrega_modo: e.target.value as 'propria' | 'app' })} className={campoBase}>
+                                                    <option value="propria">O próprio lojista (o frete fica com ele)</option>
+                                                    <option value="app">Motoboy do Pede Aki (o frete vai para o motoboy)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-yellow-400">Para liberar os controles de pagamento e entrega, rode o SQL 17 no Supabase.</p>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="rounded-lg border border-gray-700 p-4 space-y-4">

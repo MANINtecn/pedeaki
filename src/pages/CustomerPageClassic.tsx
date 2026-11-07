@@ -1001,6 +1001,23 @@ const SideCart: React.FC<{
         const [pendente, setPendente] = useState<PixPendente | null>(() => lerPixPendente(storeId));
         const [mostrarPix, setMostrarPix] = useState<boolean>(() => !!lerPixPendente(storeId));
         const encerrarPix = () => { limparPixPendente(); setPendente(null); setMostrarPix(false); };
+
+        // Formas de pagamento da loja de comissao: so as que o administrador ligou (PIX, dinheiro e, em breve, cartao online).
+        const ehComissao = currentStore?.modelo === 'comissao';
+        const formasComissao: { valor: PaymentMethod; titulo: string; detalhe: string }[] = [
+            ...(currentStore?.pagamento_pix !== false ? [{ valor: 'PIX' as PaymentMethod, titulo: 'PIX', detalhe: 'Pague agora pelo app' }] : []),
+            ...(currentStore?.pagamento_cartao === true ? [{ valor: 'Cartão' as PaymentMethod, titulo: 'Cartão', detalhe: 'Pague agora pelo app' }] : []),
+            ...(currentStore?.aceita_dinheiro !== false ? [{ valor: 'Dinheiro' as PaymentMethod, titulo: 'Dinheiro', detalhe: 'Pague na entrega' }] : []),
+        ];
+        const chaveFormas = formasComissao.map(f => f.valor).join('|');
+        useEffect(() => {
+            if (!ehComissao) return;
+            const validas = chaveFormas ? chaveFormas.split('|') : [];
+            // so uma forma: ja vem escolhida; forma guardada de outra compra que a loja nao aceita mais: limpa
+            if (validas.length === 1 && paymentMethod !== validas[0]) setPaymentMethod(validas[0] as PaymentMethod);
+            else if (validas.length !== 1 && paymentMethod && !validas.includes(paymentMethod)) setPaymentMethod('' as PaymentMethod);
+        }, [ehComissao, chaveFormas, paymentMethod]);
+        const [semTroco, setSemTroco] = useState(false);
         const [submitMessage, setSubmitMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
         const minOrderValue = settings?.minOrderValue ?? MIN_ORDER_VALUE;
 
@@ -1044,10 +1061,11 @@ const SideCart: React.FC<{
                 if (!referencePoint.trim()) return false;
             }
             if (!paymentMethod) return false; // forma de pagamento e' obrigatoria, sem padrao pre-selecionado
-            if (paymentMethod === 'Dinheiro' && !changeFor) return false;
+            if (paymentMethod === 'Dinheiro' && !semTroco && (!changeFor || parseFloat(changeFor) < total)) return false;
+            if (ehComissao && formasComissao.length === 0) return false;
             if (orderType === 'Entrega' && total < minOrderValue) return false;
             return true;
-        }, [customerName, phone, orderType, deliveryZones, selectedZoneId, address, houseNumber, referencePoint, paymentMethod, changeFor, total, minOrderValue]);
+        }, [customerName, phone, orderType, deliveryZones, selectedZoneId, address, houseNumber, referencePoint, paymentMethod, changeFor, semTroco, ehComissao, chaveFormas, total, minOrderValue]);
 
 
         const handleSubmit = async (e: React.FormEvent) => {
@@ -1104,7 +1122,7 @@ const SideCart: React.FC<{
                     referencePoint,
                     orderType,
                     paymentMethod,
-                    changeFor: changeFor ? parseFloat(changeFor) : undefined,
+                    changeFor: !semTroco && changeFor ? parseFloat(changeFor) : undefined,
                     items: finalItems,
                     total,
                     discount: orderDiscount > 0 ? orderDiscount : undefined,
@@ -1348,6 +1366,32 @@ const SideCart: React.FC<{
                                     </button>
                                 </div>
 
+                                {ehComissao ? (
+                                    <div>
+                                        <p className="text-[11px] font-bold text-text-light mb-1">Forma de pagamento <span className="text-red-500">*</span></p>
+                                        {formasComissao.length === 0 ? (
+                                            <p className="text-xs text-red-500 font-semibold">Esta loja ainda não está recebendo pedidos pelo app.</p>
+                                        ) : formasComissao.length === 1 ? (
+                                            <div className="rounded border-2 border-primary bg-primary/10 px-3 py-2">
+                                                <p className="text-sm font-bold text-text-light">{formasComissao[0].titulo}</p>
+                                                <p className="text-[11px] text-text-dark">{formasComissao[0].detalhe}. É a forma de pagamento desta loja.</p>
+                                            </div>
+                                        ) : (
+                                            <div className={`grid gap-2 ${formasComissao.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                                                {formasComissao.map(f => (
+                                                    <button type="button" key={f.valor} onClick={() => setPaymentMethod(f.valor)}
+                                                        className={`rounded border-2 px-2 py-2 text-left transition-colors ${paymentMethod === f.valor ? 'border-primary bg-primary/10' : !paymentMethod ? 'border-red-400' : 'border-surface bg-background'}`}>
+                                                        <span className="block text-sm font-bold text-text-light">{f.titulo}</span>
+                                                        <span className="block text-[10px] text-text-dark leading-tight">{f.detalhe}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {formasComissao.length > 1 && !paymentMethod && (
+                                            <p className="text-[10px] text-red-500 mt-0.5 font-semibold">Escolha como vai pagar para continuar.</p>
+                                        )}
+                                    </div>
+                                ) : (
                                 <div>
                                     <select
                                         value={paymentMethod}
@@ -1370,6 +1414,7 @@ const SideCart: React.FC<{
                                         </p>
                                     )}
                                 </div>
+                                )}
 
                                 {orderType === 'Entrega' && (
                                     <div className="space-y-2">
@@ -1431,14 +1476,27 @@ const SideCart: React.FC<{
                                 )}
 
                                 {paymentMethod === 'Dinheiro' && (
-                                    <input
-                                        type="number"
-                                        placeholder="Troco para quanto?"
-                                        value={changeFor}
-                                        onChange={e => setChangeFor(e.target.value)}
-                                        className="w-full p-1.5 bg-background border border-surface rounded text-text-light focus:border-primary outline-none text-xs h-8"
-                                        required
-                                    />
+                                    <div className="space-y-1">
+                                        <label className="flex items-center gap-2 text-xs text-text-light cursor-pointer">
+                                            <input type="checkbox" checked={semTroco} onChange={e => setSemTroco(e.target.checked)} className="h-4 w-4" />
+                                            Não preciso de troco
+                                        </label>
+                                        {!semTroco && (
+                                            <>
+                                                <input
+                                                    type="number"
+                                                    placeholder="Troco para quanto?"
+                                                    value={changeFor}
+                                                    onChange={e => setChangeFor(e.target.value)}
+                                                    className="w-full p-1.5 bg-background border border-surface rounded text-text-light focus:border-primary outline-none text-xs h-8"
+                                                    required
+                                                />
+                                                {changeFor && parseFloat(changeFor) < total && (
+                                                    <p className="text-[10px] text-red-500 font-semibold">O valor do troco precisa ser maior que o total do pedido (R$ {total.toFixed(2).replace('.', ',')}).</p>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
                                 )}
 
                                 {paymentMethod === 'PIX' && currentStore?.modelo !== 'comissao' && (
